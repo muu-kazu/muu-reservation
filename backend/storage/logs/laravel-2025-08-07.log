@@ -1,0 +1,30 @@
+[2025-08-07 01:59:45] local.ERROR: The "-s" option does not exist. {"exception":"[object] (Symfony\\Component\\Console\\Exception\\RuntimeException(code: 0): The \"-s\" option does not exist. at /home/muu-ima/projects/muu-stock/backend/vendor/symfony/console/Input/ArgvInput.php:119)
+[stacktrace]
+#0 /home/muu-ima/projects/muu-stock/backend/vendor/symfony/console/Input/ArgvInput.php(101): Symfony\\Component\\Console\\Input\\ArgvInput->parseShortOptionSet()
+#1 /home/muu-ima/projects/muu-stock/backend/vendor/symfony/console/Input/ArgvInput.php(81): Symfony\\Component\\Console\\Input\\ArgvInput->parseShortOption()
+#2 /home/muu-ima/projects/muu-stock/backend/vendor/symfony/console/Input/ArgvInput.php(68): Symfony\\Component\\Console\\Input\\ArgvInput->parseToken()
+#3 /home/muu-ima/projects/muu-stock/backend/vendor/symfony/console/Input/Input.php(53): Symfony\\Component\\Console\\Input\\ArgvInput->parse()
+#4 /home/muu-ima/projects/muu-stock/backend/vendor/symfony/console/Command/Command.php(238): Symfony\\Component\\Console\\Input\\Input->bind()
+#5 /home/muu-ima/projects/muu-stock/backend/vendor/laravel/framework/src/Illuminate/Console/Command.php(181): Symfony\\Component\\Console\\Command\\Command->run()
+#6 /home/muu-ima/projects/muu-stock/backend/vendor/symfony/console/Application.php(1049): Illuminate\\Console\\Command->run()
+#7 /home/muu-ima/projects/muu-stock/backend/vendor/symfony/console/Application.php(318): Symfony\\Component\\Console\\Application->doRunCommand()
+#8 /home/muu-ima/projects/muu-stock/backend/vendor/symfony/console/Application.php(169): Symfony\\Component\\Console\\Application->doRun()
+#9 /home/muu-ima/projects/muu-stock/backend/vendor/laravel/framework/src/Illuminate/Foundation/Console/Kernel.php(196): Symfony\\Component\\Console\\Application->run()
+#10 /home/muu-ima/projects/muu-stock/backend/artisan(35): Illuminate\\Foundation\\Console\\Kernel->handle()
+#11 {main}
+"} 
+[2025-08-07 02:00:01] local.ERROR: The "-s" option does not exist. {"exception":"[object] (Symfony\\Component\\Console\\Exception\\RuntimeException(code: 0): The \"-s\" option does not exist. at /home/muu-ima/projects/muu-stock/backend/vendor/symfony/console/Input/ArgvInput.php:119)
+[stacktrace]
+#0 /home/muu-ima/projects/muu-stock/backend/vendor/symfony/console/Input/ArgvInput.php(101): Symfony\\Component\\Console\\Input\\ArgvInput->parseShortOptionSet()
+#1 /home/muu-ima/projects/muu-stock/backend/vendor/symfony/console/Input/ArgvInput.php(81): Symfony\\Component\\Console\\Input\\ArgvInput->parseShortOption()
+#2 /home/muu-ima/projects/muu-stock/backend/vendor/symfony/console/Input/ArgvInput.php(68): Symfony\\Component\\Console\\Input\\ArgvInput->parseToken()
+#3 /home/muu-ima/projects/muu-stock/backend/vendor/symfony/console/Input/Input.php(53): Symfony\\Component\\Console\\Input\\ArgvInput->parse()
+#4 /home/muu-ima/projects/muu-stock/backend/vendor/symfony/console/Command/Command.php(238): Symfony\\Component\\Console\\Input\\Input->bind()
+#5 /home/muu-ima/projects/muu-stock/backend/vendor/laravel/framework/src/Illuminate/Console/Command.php(181): Symfony\\Component\\Console\\Command\\Command->run()
+#6 /home/muu-ima/projects/muu-stock/backend/vendor/symfony/console/Application.php(1049): Illuminate\\Console\\Command->run()
+#7 /home/muu-ima/projects/muu-stock/backend/vendor/symfony/console/Application.php(318): Symfony\\Component\\Console\\Application->doRunCommand()
+#8 /home/muu-ima/projects/muu-stock/backend/vendor/symfony/console/Application.php(169): Symfony\\Component\\Console\\Application->doRun()
+#9 /home/muu-ima/projects/muu-stock/backend/vendor/laravel/framework/src/Illuminate/Foundation/Console/Kernel.php(196): Symfony\\Component\\Console\\Application->run()
+#10 /home/muu-ima/projects/muu-stock/backend/artisan(35): Illuminate\\Foundation\\Console\\Kernel->handle()
+#11 {main}
+"} 

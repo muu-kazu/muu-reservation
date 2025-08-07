@@ -1,0 +1,47 @@
+version: "3.8"
+
+services:
+  backend:
+    build:
+      context: ./backend   # LaravelのDockerfileがあるディレクトリ
+    container_name: laravel-backend
+    ports:
+      - "8000:80"       # Laravelのポート（例）
+    volumes:
+      - ./backend:/var/www/html
+    environment:
+      - APP_ENV=local
+      - APP_DEBUG=true
+    depends_on:
+      - db
+
+  frontend:
+    build:
+      context: ./frontend  # Next.jsのDockerfileがあるディレクトリ
+    container_name: next-frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+    environment:
+      - NODE_ENV=development
+    command: npm run dev
+    depends_on:
+      - backend
+
+  db:
+    image: mysql:8.0
+    container_name: mysql-db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: laravel_db
+      MYSQL_USER: laravel_user
+      MYSQL_PASSWORD: laravel_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - dbdata:/var/lib/mysql
+
+volumes:
+  dbdata:

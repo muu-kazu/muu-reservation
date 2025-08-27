@@ -1,6 +1,6 @@
 <?php
 
-namespace App; // ← app/Models 配下なら: namespace App\Models;
+namespace App\Models; // ← app/Models 配下なら: namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;

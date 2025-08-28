@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use App\Models\Reservation;
 use Illuminate\Database\QueryException;
@@ -169,4 +170,13 @@ Route::delete('/reservations/{id}', function ($id) {
  */
 Route::get('/reservations/{id}', function ($id) {
     return \App\Models\Reservation::findOrFail($id);
+});
+
+Route::get('/healthz', function () {
+    try {
+        DB::select('select 1');
+        return response()->json(['ok' => true], 200);
+    } catch (\Throwable $e) {
+        return response()->json(['ok' => false, 'error' => $e->getMessage()], 500);
+    }
 });

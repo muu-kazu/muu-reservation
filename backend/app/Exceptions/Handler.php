@@ -4,7 +4,9 @@ namespace App\Exceptions;
 
 use Throwable;
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
+
 use Illuminate\Database\QueryException;
+use Illuminate\Database\UniqueConstraintViolationException; 
 use Symfony\Component\HttpFoundation\Response;
 
 class Handler extends ExceptionHandler
@@ -52,15 +54,23 @@ class Handler extends ExceptionHandler
         return parent::render($request, $exception);
     }
 
-    public function register(): void
+     public function register(): void
     {
+        // 9+ の専用例外（これが来たら無条件で 409）
+        $this->renderable(function (UniqueConstraintViolationException $e, $request) {
+            return response()->json([
+                'message' => '同じ日・同じ部屋の予約が既にあります。',
+            ], Response::HTTP_CONFLICT);
+        });
+
+        // 旧来（8系など）の QueryException を SQLSTATE で判定
         $this->renderable(function (QueryException $e, $request) {
-            // PostgreSQL の一意制約違反は　SQLSTATE 23505
+            // SQLSTATE を取り出す（getCode が空のこともあるためフォールバック）
             $sqlState = $e->getCode() ?: ($e->errorInfo[0] ?? null);
-            if($sqlState === 23505) {
+            if ($sqlState === '23505') { // unique_violation
                 return response()->json([
                     'message' => '同じ日・同じ部屋の予約が既にあります。',
-                ], Response::HTTP_CONFLICT); //409
+                ], Response::HTTP_CONFLICT);
             }
         });
     }

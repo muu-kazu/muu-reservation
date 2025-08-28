@@ -4,6 +4,8 @@ namespace App\Exceptions;
 
 use Throwable;
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
+use Illuminate\Database\QueryException;
+use Symfony\Component\HttpFoundation\Response;
 
 class Handler extends ExceptionHandler
 {
@@ -13,7 +15,8 @@ class Handler extends ExceptionHandler
      * @var array
      */
     protected $dontReport = [
-        //
+        'password',
+        'password_cofirmation'
     ];
 
     /**
@@ -47,5 +50,18 @@ class Handler extends ExceptionHandler
     public function render($request, Throwable $exception)
     {
         return parent::render($request, $exception);
+    }
+
+    public function register(): void
+    {
+        $this->renderable(function (QueryException $e, $request) {
+            // PostgreSQL の一意制約違反は　SQLSTATE 23505
+            $sqlState = $e->getCode() ?: ($e->errorInfo[0] ?? null);
+            if($sqlState === 23505) {
+                return response()->json([
+                    'message' => '同じ日・同じ部屋の予約が既にあります。',
+                ], Response::HTTP_CONFLICT); //409
+            }
+        });
     }
 }

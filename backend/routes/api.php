@@ -1,7 +1,6 @@
 <?php
 
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use App\Models\Reservation;
 use Illuminate\Database\QueryException;
@@ -170,33 +169,4 @@ Route::delete('/reservations/{id}', function ($id) {
  */
 Route::get('/reservations/{id}', function ($id) {
     return \App\Models\Reservation::findOrFail($id);
-});
-
-Route::get('/healthz', function () {
-    try {
-        DB::select('select 1');
-        return response()->json(['ok' => true], 200);
-    } catch (\Throwable $e) {
-        return response()->json(['ok' => false, 'error' => $e->getMessage()], 500);
-    }
-});
-
-Route::get('/_dbconf', function () {
-    $c = config('database.connections.pgsql'); // Laravelが現在使う設定
-    return response()->json([
-        'config' => [
-            'url'      => $c['url']     ?? null,
-            'host'     => $c['host']    ?? null,
-            'database' => $c['database']?? null,
-            'username' => $c['username']?? null,
-            'sslmode'  => $c['sslmode'] ?? null,
-        ],
-        // 参考: 環境変数側（あってもconfigに反映されてない可能性がある）
-        'env' => [
-            'DATABASE_URL' => env('DATABASE_URL') ? '[set]' : null,
-            'DB_HOST'      => env('DB_HOST')      ?? null,
-            'DB_DATABASE'  => env('DB_DATABASE')  ?? null,
-            'DB_USERNAME'  => env('DB_USERNAME')  ?? null,
-        ],
-    ], 200);
 });

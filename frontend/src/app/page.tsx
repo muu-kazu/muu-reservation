@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 
 // ============================================
-// Next.js (App Router) page.tsx — api.phpに合わせた同期版
+// Next.js (App Router) page.tsx — api.phpに合わせた同期版 + カレンダー表示
 // 仕様:
 // - 一覧:   GET   /api/reservations?date=YYYY-MM-DD&program=tour|experience&slot=am|pm|full
 // - 作成:   POST  /api/reservations (date, program, slot, name[, contact, note, room])
@@ -35,9 +35,41 @@ export interface Reservation {
   updated_at?: string;
 }
 
+// ========= 日付ユーティリティ =========
+const toDateStr = (d: string | Date) => {
+  if (typeof d === "string") return d.slice(0, 10);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+};
+
+function buildMonthCells(cursor: Date, mondayStart = true) {
+  const y = cursor.getFullYear();
+  const m = cursor.getMonth(); // 0-11
+  const first = new Date(y, m, 1);
+  const firstDow = first.getDay(); // 0=Sun
+  const startOffset = (firstDow - (mondayStart ? 1 : 0) + 7) % 7; // 月起点
+  const gridStart = new Date(y, m, 1 - startOffset);
+  const cells = Array.from({ length: 42 }, (_, i) => {
+    const d = new Date(gridStart);
+    d.setDate(gridStart.getDate() + i);
+    return {
+      dateStr: toDateStr(d),
+      inMonth: d.getMonth() === m,
+      y: d.getFullYear(),
+      m: d.getMonth(),
+      day: d.getDate(),
+    };
+  });
+  return cells;
+}
+
+function formatMonthJP(d: Date) {
+  return `${d.getFullYear()}年${d.getMonth() + 1}月`;
+}
+
 export default function Page() {
   // ===== State
-  const [items, setItems] = useState<Reservation[] | null>(null);
+  const [items, setItems] = useState<Reservation[] | null>(null);          // 絞り込み一覧用
+  const [allItems, setAllItems] = useState<Reservation[] | null>(null);    // カレンダー用（全体）
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +79,7 @@ export default function Page() {
   const tomorrow = useMemo(() => {
     const d = new Date();
     d.setDate(d.getDate() + 1);
-    return d.toISOString().slice(0, 10);
+    return toDateStr(d);
   }, []);
 
   const [form, setForm] = useState<Reservation>({
@@ -57,12 +89,22 @@ export default function Page() {
     name: "",
   });
 
-  // 絞り込み
+  // 絞り込み（一覧用）
   const [filter, setFilter] = useState<{ date?: string; program?: Program | ""; slot?: Slot | ""; }>(() => ({
     date: "",
     program: "",
     slot: "",
   }));
+
+  // カレンダー: 表示中の月（1日固定）
+  const [calCursor, setCalCursor] = useState(() => {
+    const d = new Date();
+    d.setDate(1);
+    return d;
+  });
+
+  const monthCells = useMemo(() => buildMonthCells(calCursor, true), [calCursor]);
+  const monthKey = useMemo(() => toDateStr(calCursor).slice(0, 7), [calCursor]); // YYYY-MM
 
   // ===== Helpers
   const jstDateTime = (iso?: string) => {
@@ -107,10 +149,33 @@ export default function Page() {
     }
   };
 
+  // カレンダー用（全件 or サーバ側で最近分を返す想定）
+  const fetchAllReservations = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/reservations`, {
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      });
+      if (!res.ok) throw new Error(`GET /reservations failed: ${res.status}`);
+      const data: Reservation[] = await res.json();
+      setAllItems(data);
+    } catch (e: any) {
+      // カレンダーに致命傷ではないのでerror表示は抑える
+      console.warn("fetchAllReservations:", e);
+    }
+  };
+
   useEffect(() => {
     fetchReservations();
+    fetchAllReservations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // カレンダー: 月が変わるたびに一応再フェッチ（新規が入ったかもしれないため）
+  useEffect(() => {
+    fetchAllReservations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [monthKey]);
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -129,9 +194,6 @@ export default function Page() {
           program: form.program,
           slot: form.slot,
           name: form.name,
-          // contact: form.contact ?? undefined,
-          // note: form.note ?? undefined,
-          // room: form.room ?? undefined,
         }),
       });
 
@@ -147,6 +209,7 @@ export default function Page() {
       const created: Reservation = await res.json();
       setSuccess("予約を作成しました");
       setItems((prev) => (prev ? [created, ...prev] : [created]));
+      setAllItems((prev) => (prev ? [created, ...prev] : [created]));
       setForm((f) => ({ ...f, name: "" }));
     } catch (e: any) {
       setError(e.message || String(e));
@@ -174,6 +237,7 @@ export default function Page() {
       }
       const updated: Reservation = await res.json();
       setItems((prev) => prev?.map((r) => (r.id === id ? updated : r)) ?? null);
+      setAllItems((prev) => prev?.map((r) => (r.id === id ? updated : r)) ?? null);
       setSuccess("状態を更新しました");
     } catch (e: any) {
       setError(e.message || String(e));
@@ -194,16 +258,29 @@ export default function Page() {
         throw new Error(js.message || `削除に失敗しました（${res.status}）`);
       }
       setItems((prev) => prev?.filter((r) => r.id !== id) ?? null);
+      setAllItems((prev) => prev?.filter((r) => r.id !== id) ?? null);
       setSuccess("削除しました");
     } catch (e: any) {
       setError(e.message || String(e));
     }
   };
 
+  // ===== カレンダー用: 当月の予約を日付ごとに集計
+  const dayMap = useMemo(() => {
+    const map: Record<string, Reservation[]> = {};
+    (allItems ?? []).forEach((r) => {
+      const ds = toDateStr(r.date);
+      if (ds.startsWith(monthKey)) {
+        (map[ds] ||= []).push(r);
+      }
+    });
+    return map;
+  }, [allItems, monthKey]);
+
   // ===== UI
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 p-6">
-      <div className="mx-auto max-w-6xl space-y-6">
+      <div className="mx-auto max-w-7xl space-y-6">
         <header className="flex items-center justify-between gap-3">
           <h1 className="text-2xl md:text-3xl font-semibold">Reservations Admin</h1>
           <div className="flex items-center gap-2">
@@ -228,7 +305,105 @@ export default function Page() {
           </div>
         )}
 
-        {/* 検索/絞り込み */}
+        {/* ===== カレンダー表示 ===== */}
+        <section className="rounded-2xl bg-white shadow p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-medium">カレンダー</h2>
+            <div className="flex items-center gap-2">
+              <button
+                className="px-3 py-1 rounded-xl border hover:bg-gray-50"
+                onClick={() => setCalCursor((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1))}
+                aria-label="前の月"
+              >
+                ←
+              </button>
+              <span className="min-w-[10ch] text-center text-sm text-gray-700">{formatMonthJP(calCursor)}</span>
+              <button
+                className="px-3 py-1 rounded-xl border hover:bg-gray-50"
+                onClick={() => setCalCursor((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1))}
+                aria-label="次の月"
+              >
+                →
+              </button>
+              <button
+                className="px-3 py-1 rounded-xl border hover:bg-gray-50"
+                onClick={() => setCalCursor(() => { const t = new Date(); t.setDate(1); return t; })}
+              >
+                今月
+              </button>
+            </div>
+          </div>
+
+          {/* 曜日ヘッダー（月起点）*/}
+          <div className="grid grid-cols-7 text-xs text-gray-500">
+            {['月','火','水','木','金','土','日'].map((w) => (
+              <div key={w} className="p-2 text-center font-medium">{w}</div>
+            ))}
+          </div>
+
+          {/* グリッド */}
+          <div className="grid grid-cols-7 gap-1">
+            {monthCells.map((cell) => {
+              const dayItems = dayMap[cell.dateStr] ?? [];
+              const counts = dayItems.reduce(
+                (acc, r) => { acc[r.slot] = (acc[r.slot] || 0) + 1 as any; return acc; },
+                { am: 0, pm: 0, full: 0 } as Record<Slot, number>
+              );
+              const total = dayItems.length;
+              const isToday = cell.dateStr === toDateStr(new Date());
+              return (
+                <button
+                  key={cell.dateStr}
+                  className={
+                    "relative h-24 rounded-xl border p-2 text-left transition " +
+                    (cell.inMonth ? "bg-white" : "bg-gray-50") +
+                    (isToday ? " ring-2 ring-blue-500" : "")
+                  }
+                  onClick={() => {
+                    setFilter((f) => ({ ...f, date: cell.dateStr }));
+                    // カレンセル→一覧に即反映
+                    fetchReservations();
+                  }}
+                  title={`${cell.dateStr}の予約を一覧で表示`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className={"text-sm " + (cell.inMonth ? "text-gray-900" : "text-gray-400")}>{cell.day}</span>
+                    {total > 0 && (
+                      <span className="text-[11px] rounded-full px-2 py-0.5 border bg-gray-50">{total}</span>
+                    )}
+                  </div>
+
+                  {/* スロット別バッジ */}
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {counts.full > 0 && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-md border">FULL×{counts.full}</span>
+                    )}
+                    {counts.am > 0 && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-md border">AM×{counts.am}</span>
+                    )}
+                    {counts.pm > 0 && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-md border">PM×{counts.pm}</span>
+                    )}
+                  </div>
+
+                  {/* 先頭の1件だけ名前を薄く出す（多すぎると崩れるので）*/}
+                  {dayItems[0] && (
+                    <div className="mt-1 text-[11px] text-gray-500 truncate" aria-hidden>
+                      {dayItems[0].name}
+                      {dayItems.length > 1 ? ` 他${dayItems.length - 1}件` : ""}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <p className="text-xs text-gray-500">
+            クリックでその日の予約を下の一覧に反映します。今後ここに「予約確認（詳細）モーダル」を追加予定です。
+          </p>
+        </section>
+
+        {/* ===== 検索/絞り込み（一覧） ===== */}
         <section className="rounded-2xl bg-white shadow p-5 space-y-4">
           <h2 className="text-lg font-medium">絞り込み</h2>
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">

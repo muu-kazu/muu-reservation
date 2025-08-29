@@ -53,3 +53,13 @@ $app->singleton(
 */
 
 return $app;
+
+// bootstrap/app.php
+use Illuminate\Http\Middleware\HandleCors;
+use Illuminate\Foundation\Configuration\Middleware;
+
+return Application::configure(basePath: dirname(__DIR__))
+    ->withMiddleware(function (Middleware $middleware) {
+        $middleware->append(HandleCors::class);
+    })
+    ->create();

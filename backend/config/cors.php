@@ -28,9 +28,9 @@ return [
     'https://*.vercel.app',
 
     // 本番用（カスタムドメインがあるなら追加）
-    'https://your-frontend.vercel.app',
+    'https://muu-reservation.vercel.app/',
     ],
-    
+
     'allowed_origins_patterns' => [],
 
     'allowed_headers' => ['*'],

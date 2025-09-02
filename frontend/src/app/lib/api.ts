@@ -1,6 +1,6 @@
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL!;
 
-type FetchOptions = RequestInit & { json?: any };
+type FetchOptions = RequestInit & { json?: unknown };
 
 export async function api(path: string, opts: FetchOptions = {}) {
   const url = `${API_BASE}${path}`;

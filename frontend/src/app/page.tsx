@@ -186,7 +186,6 @@ export default function Page() {
   // カレンダー: 月が変わるたびに一応再フェッチ（新規が入ったかもしれないため）
   useEffect(() => {
     fetchAllReservations();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [monthKey]);
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -251,8 +250,8 @@ export default function Page() {
       setItems((prev) => prev?.map((r) => (r.id === id ? updated : r)) ?? null);
       setAllItems((prev) => prev?.map((r) => (r.id === id ? updated : r)) ?? null);
       setSuccess("状態を更新しました");
-    } catch (e: any) {
-      setError(e.message || String(e));
+    } catch (e: unknown) {
+      setError(getErrorMessage(e));
     }
   };
 
@@ -272,8 +271,8 @@ export default function Page() {
       setItems((prev) => prev?.filter((r) => r.id !== id) ?? null);
       setAllItems((prev) => prev?.filter((r) => r.id !== id) ?? null);
       setSuccess("削除しました");
-    } catch (e: any) {
-      setError(e.message || String(e));
+    } catch (e: unknown) {
+      setError(getErrorMessage(e));
     }
   };
 
@@ -357,14 +356,14 @@ export default function Page() {
           <div className="grid grid-cols-7 gap-1">
             {monthCells.map((cell) => {
               const dayItems = dayMap[cell.dateStr] ?? [];
-            type SlotCounts = Record<Slot, number>;
-            const counts = dayItems.reduce<SlotCounts>(
-              (acc, r) => {
-                acc[r.slot] = (acc[r.slot] ?? 0) + 1;
-                return acc;
-              },
-            { am: 0, pm: 0, full: 0 }
-            );
+              type SlotCounts = Record<Slot, number>;
+              const counts = dayItems.reduce<SlotCounts>(
+                (acc, r) => {
+                  acc[r.slot] = (acc[r.slot] ?? 0) + 1;
+                  return acc;
+                },
+                { am: 0, pm: 0, full: 0 }
+              );
               const total = dayItems.length;
               const isToday = cell.dateStr === toDateStr(new Date());
               return (
@@ -435,8 +434,9 @@ export default function Page() {
               <select
                 className="mt-1 w-full rounded-xl border p-2"
                 value={filter.program}
-                onChange={(e) => setFilter((f) => ({ ...f, program: e.target.value as any }))}
-              >
+                onChange={(e) =>
+                  setFilter((f) => ({ ...f, program: isProgram(e.target.value) ? e.target.value : "" }))
+                }              >
                 <option value="">すべて</option>
                 <option value="tour">tour</option>
                 <option value="experience">experience</option>
@@ -446,8 +446,9 @@ export default function Page() {
               <select
                 className="mt-1 w-full rounded-xl border p-2"
                 value={filter.slot}
-                onChange={(e) => setFilter((f) => ({ ...f, slot: e.target.value as any }))}
-              >
+                onChange={(e) =>
+                  setFilter((f) => ({ ...f, slot: isSlot(e.target.value) ? e.target.value : "" }))
+                }              >
                 <option value="">すべて</option>
                 <option value="am">am</option>
                 <option value="pm">pm</option>
@@ -499,11 +500,11 @@ export default function Page() {
                 <select
                   className="mt-1 w-full rounded-xl border p-2"
                   value={form.slot}
-                  onChange={(e) => setFilter((f) =>({
+                  onChange={(e) => setFilter((f) => ({
                     ...f,
-                    slot:isSlot(e.target.value) ? e.target.value : "",
+                    slot: isSlot(e.target.value) ? e.target.value : "",
                   }))
-                }
+                  }
                   required
                 >
                   <option value="am">午前 (am)</option>
@@ -601,7 +602,7 @@ export default function Page() {
         </section>
 
         <footer className="text-xs text-gray-500 pt-4">API: <code>{API_BASE}</code></footer>
-      </div>
+      </div >
     </div >
   );
 }

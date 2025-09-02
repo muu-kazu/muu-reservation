@@ -20,9 +20,17 @@ return [
     'allowed_methods' => ['*'],
 
     'allowed_origins' => [        
-        'http://localhost:3000',
-        'https://localhost:3000',],
+       // 開発用
+    'http://localhost:3000',
+    'https://localhost:3000',
 
+    // Vercel プレビュー環境（必要なら）
+    'https://*.vercel.app',
+
+    // 本番用（カスタムドメインがあるなら追加）
+    'https://your-frontend.vercel.app',
+    ],
+    
     'allowed_origins_patterns' => [],
 
     'allowed_headers' => ['*'],

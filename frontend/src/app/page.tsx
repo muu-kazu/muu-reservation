@@ -35,6 +35,18 @@ export interface Reservation {
   updated_at?: string;
 }
 
+// ========= type guards / utils =========
+function isProgram(v: string): v is Program {
+  return v === "tour" || v === "experience";
+}
+function isSlot(v: string): v is Slot {
+  return v === "am" || v === "pm" || v === "full";
+}
+function getErrorMessage(e: unknown) {
+  return e instanceof Error ? e.message : String(e);
+}
+
+
 // ========= 日付ユーティリティ =========
 const toDateStr = (d: string | Date) => {
   if (typeof d === "string") return d.slice(0, 10);
@@ -142,8 +154,8 @@ export default function Page() {
       if (!res.ok) throw new Error(`GET /reservations failed: ${res.status}`);
       const data: Reservation[] = await res.json();
       setItems(data);
-    } catch (e: any) {
-      setError(e.message || String(e));
+    } catch (e: unknown) {
+      setError(getErrorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -159,9 +171,9 @@ export default function Page() {
       if (!res.ok) throw new Error(`GET /reservations failed: ${res.status}`);
       const data: Reservation[] = await res.json();
       setAllItems(data);
-    } catch (e: any) {
+    } catch (e: unknown) {
       // カレンダーに致命傷ではないのでerror表示は抑える
-      console.warn("fetchAllReservations:", e);
+      console.warn("fetchAllReservations:", getErrorMessage(e));
     }
   };
 
@@ -211,8 +223,8 @@ export default function Page() {
       setItems((prev) => (prev ? [created, ...prev] : [created]));
       setAllItems((prev) => (prev ? [created, ...prev] : [created]));
       setForm((f) => ({ ...f, name: "" }));
-    } catch (e: any) {
-      setError(e.message || String(e));
+    } catch (e: unknown) {
+      setError(getErrorMessage(e));
     } finally {
       setSubmitting(false);
     }
@@ -336,7 +348,7 @@ export default function Page() {
 
           {/* 曜日ヘッダー（月起点）*/}
           <div className="grid grid-cols-7 text-xs text-gray-500">
-            {['月','火','水','木','金','土','日'].map((w) => (
+            {['月', '火', '水', '木', '金', '土', '日'].map((w) => (
               <div key={w} className="p-2 text-center font-medium">{w}</div>
             ))}
           </div>
@@ -345,10 +357,14 @@ export default function Page() {
           <div className="grid grid-cols-7 gap-1">
             {monthCells.map((cell) => {
               const dayItems = dayMap[cell.dateStr] ?? [];
-              const counts = dayItems.reduce(
-                (acc, r) => { acc[r.slot] = (acc[r.slot] || 0) + 1 as any; return acc; },
-                { am: 0, pm: 0, full: 0 } as Record<Slot, number>
-              );
+            type SlotCounts = Record<Slot, number>;
+            const counts = dayItems.reduce<SlotCounts>(
+              (acc, r) => {
+                acc[r.slot] = (acc[r.slot] ?? 0) + 1;
+                return acc;
+              },
+            { am: 0, pm: 0, full: 0 }
+            );
               const total = dayItems.length;
               const isToday = cell.dateStr === toDateStr(new Date());
               return (
@@ -467,7 +483,12 @@ export default function Page() {
                 <select
                   className="mt-1 w-full rounded-xl border p-2"
                   value={form.program}
-                  onChange={(e) => setForm({ ...form, program: e.target.value as Program })}
+                  onChange={(e) =>
+                    setFilter((f) => ({
+                      ...f,
+                      program: isProgram(e.target.value) ? e.target.value : "",
+                    }))
+                  }
                   required
                 >
                   <option value="experience">experience</option>
@@ -478,7 +499,11 @@ export default function Page() {
                 <select
                   className="mt-1 w-full rounded-xl border p-2"
                   value={form.slot}
-                  onChange={(e) => setForm({ ...form, slot: e.target.value as Slot })}
+                  onChange={(e) => setFilter((f) =>({
+                    ...f,
+                    slot:isSlot(e.target.value) ? e.target.value : "",
+                  }))
+                }
                   required
                 >
                   <option value="am">午前 (am)</option>
@@ -536,7 +561,7 @@ export default function Page() {
                     {items.map((r) => (
                       <tr key={`${r.id ?? r.date + "-" + r.slot}`} className="border-t align-top">
                         <td className="py-2 pr-3 whitespace-nowrap">{r.id ?? "-"}</td>
-                        <td className="py-2 pr-3 whitespace-nowrap">{typeof r.date === "string" ? r.date.slice(0,10) : String(r.date)}</td>
+                        <td className="py-2 pr-3 whitespace-nowrap">{typeof r.date === "string" ? r.date.slice(0, 10) : String(r.date)}</td>
                         <td className="py-2 pr-3 whitespace-nowrap">{r.program}</td>
                         <td className="py-2 pr-3 whitespace-nowrap">{r.slot}</td>
                         <td className="py-2 pr-3">{r.name}</td>
@@ -577,6 +602,6 @@ export default function Page() {
 
         <footer className="text-xs text-gray-500 pt-4">API: <code>{API_BASE}</code></footer>
       </div>
-    </div>
+    </div >
   );
 }

@@ -17,18 +17,12 @@ return [
 
     'paths' => ['api/*', 'sanctum/csrf-cookie'],
 
-    'allowed_methods' => ['*'],
+    'allowed_methods' => ['GET','POST','PATCH','DELETE','OPTIONS'],
 
     'allowed_origins' => [        
-       // 開発用
+    'https://muu-reservation.vercel.app',
     'http://localhost:3000',
     'https://localhost:3000',
-
-    // Vercel プレビュー環境（必要なら）
-    'https://*.vercel.app',
-
-    // 本番用（カスタムドメインがあるなら追加）
-    'https://muu-reservation.vercel.app/',
     ],
 
     'allowed_origins_patterns' => [],

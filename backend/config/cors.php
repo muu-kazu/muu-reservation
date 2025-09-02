@@ -15,24 +15,18 @@ return [
     |
     */
 
-    'paths' => ['api/*', 'sanctum/csrf-cookie'],
+    'paths' => ['*'],
 
-    'allowed_methods' => ['GET','POST','PATCH','DELETE','OPTIONS'],
+  'allowed_methods' => ['GET','POST','PATCH','DELETE','OPTIONS'],
 
-    'allowed_origins' => [        
-    'https://muu-reservation.vercel.app',
-    'http://localhost:3000',
-    'https://localhost:3000',
-    ],
+  // 一時的にワイルドカードで全面許可
+  'allowed_origins' => ['*'],
 
-    'allowed_origins_patterns' => [],
+  'allowed_origins_patterns' => [],   // いったん空に
+  'allowed_headers' => ['*'],
+  'exposed_headers' => [],
+  'max_age' => 0,
 
-    'allowed_headers' => ['*'],
-
-    'exposed_headers' => [],
-
-    'max_age' => 0,
-
-    'supports_credentials' => false,
-
+  // Cookie 認証なしなら false のままでOK（* が使える条件）
+  'supports_credentials' => false,
 ];

@@ -134,11 +134,3 @@ Route::middleware([DevCors::class])->group(function () use ($SLOT_MAP) {
 
 }); // ← グループはここで閉じる（セミコロン必須）
 
-// プリフライト (OPTIONS)：204 + CORSヘッダ
-Route::options('/{any}', function () {
-    return response()->noContent(204)
-        ->header('Access-Control-Allow-Origin', 'http://localhost:3000')
-        ->header('Vary','Origin')
-        ->header('Access-Control-Allow-Methods', 'GET, POST, PATCH, PUT, DELETE, OPTIONS')
-        ->header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
-})->where('any', '.*');

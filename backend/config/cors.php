@@ -1,32 +1,25 @@
 <?php
 
 return [
+    'paths' => ['api/*'],
+    'allowed_methods' => ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
 
-    /*
-    |--------------------------------------------------------------------------
-    | Cross-Origin Resource Sharing (CORS) Configuration
-    |--------------------------------------------------------------------------
-    |
-    | Here you may configure your settings for cross-origin resource sharing
-    | or "CORS". This determines what cross-origin operations may execute
-    | in web browsers. You are free to adjust these settings as needed.
-    |
-    | To learn more: https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
-    |
-    */
+    // ★ 完全一致（末尾 / なし）
+    'allowed_origins' => [
+        'https://muu-reservation.vercel.app',
+        'http://localhost:3000',
+        'https://localhost:3000',
+    ],
 
-    'paths' => ['*'],
+    // ★ プレビュー( *.vercel.app )を許可したいならこちら
+    'allowed_origins_patterns' => [
+        '#^https://.*\.vercel\.app$#',
+    ],
 
-  'allowed_methods' => ['GET','POST','PATCH','DELETE','OPTIONS'],
+    'allowed_headers' => ['*'],
+    'exposed_headers' => [],
+    'max_age' => 0,
 
-  // 一時的にワイルドカードで全面許可
-  'allowed_origins' => ['*'],
-
-  'allowed_origins_patterns' => [],   // いったん空に
-  'allowed_headers' => ['*'],
-  'exposed_headers' => [],
-  'max_age' => 0,
-
-  // Cookie 認証なしなら false のままでOK（* が使える条件）
-  'supports_credentials' => false,
+    // Cookieベース認証を使っていなければ false のままでOK
+    'supports_credentials' => false,
 ];

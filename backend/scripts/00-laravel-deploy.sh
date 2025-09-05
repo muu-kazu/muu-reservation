@@ -2,6 +2,16 @@
 set -e
 cd /var/www/html
 
+# --- デバッグ出力ここから ---
+echo "[debug] PWD=$(pwd)"
+echo "[debug] WEBROOT=$WEBROOT"
+echo "[debug] DOCUMENT_ROOT=$DOCUMENT_ROOT"
+echo "[debug] ls -al /var/www/html:"
+ls -al /var/www/html || true
+echo "[debug] ls -al /var/www/html/public:"
+ls -al /var/www/html/public || true
+# --- デバッグ出力ここまで ---
+
 mkdir -p storage/framework/{cache,sessions,views} storage/logs bootstrap/cache
 chown -R www-data:www-data storage bootstrap/cache || true
 chmod -R ug+rw storage bootstrap/cache || true

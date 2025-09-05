@@ -33,6 +33,12 @@ export interface Reservation {
   room?: string | null;
   created_at?: string;
   updated_at?: string;
+  last_name?: string | null;
+  first_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  notebook_type?: string | null;
+  has_certificate?: boolean | null;
 }
 
 // ========= type guards / utils =========
@@ -99,6 +105,12 @@ export default function Page() {
     program: "experience",
     slot: "am",
     name: "",
+    last_name: "",
+    first_name: "",
+    email: "",
+    phone: "",
+    notebook_type: "",
+    has_certificate: false,
   });
 
   // 絞り込み（一覧用）
@@ -205,6 +217,14 @@ export default function Page() {
           program: form.program,
           slot: form.slot,
           name: form.name,
+          last_name: form.last_name || null,
+          first_name: form.first_name || null,
+          email: form.email || null,
+          phone: form.phone || null,
+          notebook_type: form.notebook_type || null,
+          has_certificate: !!form.has_certificate,
+          note: form.note ?? null,
+          room: form.room ?? null,
         }),
       });
 
@@ -512,15 +532,45 @@ export default function Page() {
                   <option value="full">全日 (full)</option>
                 </select>
               </label>
-              <label className="block text-sm md:col-span-2">お名前
+              <label className="block text-sm md:col-span-2">お名前（表示用・任意）
                 <input
                   type="text"
                   className="mt-1 w-full rounded-xl border p-2"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                   placeholder="山田 太郎"
-                  required
                 />
+              </label>
+            </div>
+            <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <label className="block text-sm">姓（last_name）
+                <input className="mt-1 w-full rounded-xl border p-2"
+                  value={form.last_name ?? ""} onChange={(e) => setForm({ ...form, last_name: e.target.value })} />
+              </label>
+              <label className="block text-sm">名（first_name）
+                <input className="mt-1 w-full rounded-xl border p-2"
+                  value={form.first_name ?? ""} onChange={(e) => setForm({ ...form, first_name: e.target.value })} />
+              </label>
+            </div>
+            <label className="block text-sm">メールアドレス
+              <input type="email" className="mt-1 w-full rounded-xl border p-2"
+                value={form.email ?? ""} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+            </label>
+            <label className="block text-sm">電話番号
+              <input className="mt-1 w-full rounded-xl border p-2"
+                value={form.phone ?? ""} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+            </label>
+            <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <label className="block text-sm">手帳の種別（notebook_type）
+                <input className="mt-1 w-full rounded-xl border p-2"
+                  value={form.notebook_type ?? ""} onChange={(e) => setForm({ ...form, notebook_type: e.target.value })} />
+              </label>
+              <label className="block text-sm">受給者証の有無（has_certificate）
+                <div className="mt-1 flex items-center gap-2">
+                  <input type="checkbox" checked={!!form.has_certificate}
+                    onChange={(e) => setForm({ ...form, has_certificate: e.target.checked })} />
+                  <span className="text-sm text-gray-600">あり</span>
+                </div>
               </label>
             </div>
             <div className="flex items-center gap-3">

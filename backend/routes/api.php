@@ -6,6 +6,7 @@ use App\Models\Reservation;
 use Illuminate\Database\QueryException;
 use Carbon\CarbonImmutable;
 use App\Http\Middleware\DevCors; // 速攻パッチ用ミドルウェア
+use App\Http\Controllers\ReservationController;
 
 
 /*
@@ -142,3 +143,6 @@ Route::get('/healthz',function () {
         'app' => config('app.name'),
     ]);
 });
+
+Route::apiResource('reservations', ReservationController::class);
+Route::get('/healthz', fn() => response()->json(['ok'=>true,'ts'=>now()], 200));

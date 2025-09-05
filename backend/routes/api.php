@@ -7,6 +7,7 @@ use Illuminate\Database\QueryException;
 use Carbon\CarbonImmutable;
 use App\Http\Middleware\DevCors; // 速攻パッチ用ミドルウェア
 
+
 /*
 |--------------------------------------------------------------------------
 | API Routes
@@ -134,3 +135,10 @@ Route::middleware([DevCors::class])->group(function () use ($SLOT_MAP) {
 
 }); // ← グループはここで閉じる（セミコロン必須）
 
+Route::get('/healthz',function () {
+    return response()->json([
+        'ok'  => true,
+        'ts'  => now()->toIso8601String(),
+        'app' => config('app.name'),
+    ]);
+});

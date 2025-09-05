@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -e
+cd /var/www/html
 
-echo "Running composer"
-composer install --no-dev --prefer-dist --no-interaction --no-progress --optimize-autoloader
+mkdir -p storage/framework/{cache,sessions,views} storage/logs bootstrap/cache
+chown -R www-data:www-data storage bootstrap/cache || true
+chmod -R ug+rw storage bootstrap/cache || true
 
-# ★ 権限問題を避けるため、当面はキャッシュ生成しない
-# php artisan config:cache
-# php artisan route:cache
+php artisan config:clear || true
+php artisan route:clear || true
+php artisan view:clear || true
+php artisan key:generate --force || true
+php artisan migrate --force || true
+php artisan config:cache || true
+php artisan route:cache || true
+php artisan view:cache || true
 
-echo "Running migrations at runtime..."
-php artisan migrate --force
-
-# ここから本番プロセスを起動（例: php-fpm）
-exec php-fpm
+echo "[init] Laravel init done."

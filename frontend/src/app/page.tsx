@@ -453,10 +453,15 @@ export default function Page() {
             <label className="block text-sm">プログラム
               <select
                 className="mt-1 w-full rounded-xl border p-2"
-                value={filter.program}
+                value={form.program}
                 onChange={(e) =>
-                  setFilter((f) => ({ ...f, program: isProgram(e.target.value) ? e.target.value : "" }))
-                }              >
+                  setForm((f) => ({
+                    ...f,
+                    program: isProgram(e.target.value) ? e.target.value : f.program,
+                  }))
+                }
+                required
+              >
                 <option value="">すべて</option>
                 <option value="tour">tour</option>
                 <option value="experience">experience</option>
@@ -465,10 +470,15 @@ export default function Page() {
             <label className="block text-sm">時間帯
               <select
                 className="mt-1 w-full rounded-xl border p-2"
-                value={filter.slot}
+                value={form.slot}
                 onChange={(e) =>
-                  setFilter((f) => ({ ...f, slot: isSlot(e.target.value) ? e.target.value : "" }))
-                }              >
+                  setForm((f) => ({
+                    ...f,
+                    slot: isSlot(e.target.value) ? e.target.value : f.slot,
+                  }))
+                }
+                required
+              >
                 <option value="">すべて</option>
                 <option value="am">am</option>
                 <option value="pm">pm</option>

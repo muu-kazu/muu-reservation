@@ -4,15 +4,16 @@ import React, { useEffect, useMemo, useState } from "react";
 
 // ============================================
 // Next.js (App Router) page.tsx — api.phpに合わせた同期版 + カレンダー表示
-// 仕様:
-// - 一覧:   GET   /api/reservations?date=YYYY-MM-DD&program=tour|experience&slot=am|pm|full
-// - 作成:   POST  /api/reservations (date, program, slot, name[, contact, note, room])
-// - 更新:   PATCH /api/reservations/{id} (status=`booked|cancelled|done` など)
-// - 削除:   DELETE /api/reservations/{id}
-// - CORS:   DevCorsミドルウェア+OPTIONS対応（api.php側）
+// 変更点（2025-09-07）
+// - API_BASE のデフォルトをローカル (http://localhost:8000/api) に変更
+// - 絞り込み/作成フォーム program/slot バインドを修正
+// - カレンダー連動で filter を更新
+// - フォームから「お名前」を削除
+// - tour の場合は slot=full を選べない（UI/状態ともに矯正）
+// - 一覧テーブルを入力項目（姓/名/メール/電話/手帳/受給者証）に合わせて拡張
 // ============================================
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "https://muu-reservation.onrender.com/api";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000/api";
 
 // Types
 export type Slot = "am" | "pm" | "full";
@@ -21,7 +22,7 @@ export type Status = "booked" | "cancelled" | "done";
 
 export interface Reservation {
   id?: number;
-  date: string; // YYYY-MM-DD (Eloquentのcast次第でISO文字列の場合も)
+  date: string; // YYYY-MM-DD (Eloquent の cast 次第で ISO 文字列の場合も)
   program: Program;
   slot: Slot;
   name: string;
@@ -52,7 +53,6 @@ function getErrorMessage(e: unknown) {
   return e instanceof Error ? e.message : String(e);
 }
 
-
 // ========= 日付ユーティリティ =========
 const toDateStr = (d: string | Date) => {
   if (typeof d === "string") return d.slice(0, 10);
@@ -60,7 +60,7 @@ const toDateStr = (d: string | Date) => {
 };
 
 function buildMonthCells(cursor: Date, mondayStart = true) {
-  const y = cursor.getFullYear();
+  const y = cursor.getFullYear?.() ?? cursor.getFullYear();
   const m = cursor.getMonth(); // 0-11
   const first = new Date(y, m, 1);
   const firstDow = first.getDay(); // 0=Sun
@@ -104,7 +104,7 @@ export default function Page() {
     date: tomorrow,
     program: "experience",
     slot: "am",
-    name: "",
+    name: "", // 送信時に null に変換（お名前入力欄は削除）
     last_name: "",
     first_name: "",
     email: "",
@@ -184,11 +184,11 @@ export default function Page() {
       const data: Reservation[] = await res.json();
       setAllItems(data);
     } catch (e: unknown) {
-      // カレンダーに致命傷ではないのでerror表示は抑える
       console.warn("fetchAllReservations:", getErrorMessage(e));
     }
   };
 
+  // 初回ロード
   useEffect(() => {
     fetchReservations();
     fetchAllReservations();
@@ -200,13 +200,18 @@ export default function Page() {
     fetchAllReservations();
   }, [monthKey]);
 
+  // filter が変わったら一覧を再取得（カレンダー/絞り込みの即時反映）
+  useEffect(() => {
+    fetchReservations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter.date, filter.program, filter.slot]);
+
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setSubmitting(true);
     setError(null);
     setSuccess(null);
     try {
-      if (!form.name.trim()) throw new Error("お名前を入力してください");
       if (!form.date) throw new Error("日付を入力してください");
 
       const res = await fetch(`${API_BASE}/reservations`, {
@@ -216,7 +221,11 @@ export default function Page() {
           date: form.date,
           program: form.program,
           slot: form.slot,
-          name: form.name,
+          // 名前は送らない/またはnullにする（バックエンドが任意を許容）
+          name:
+            (form.last_name?.trim() || form.first_name?.trim())
+              ? `${(form.last_name ?? '').trim()}${form.first_name?.trim() ? ' ' + form.first_name.trim() : ''}`
+              : 'ゲスト',
           last_name: form.last_name || null,
           first_name: form.first_name || null,
           email: form.email || null,
@@ -241,7 +250,6 @@ export default function Page() {
       setSuccess("予約を作成しました");
       setItems((prev) => (prev ? [created, ...prev] : [created]));
       setAllItems((prev) => (prev ? [created, ...prev] : [created]));
-      setForm((f) => ({ ...f, name: "" }));
     } catch (e: unknown) {
       setError(getErrorMessage(e));
     } finally {
@@ -295,6 +303,13 @@ export default function Page() {
       setError(getErrorMessage(e));
     }
   };
+
+  // tour のとき slot=full を避ける矯正
+  useEffect(() => {
+    if (form.program === "tour" && form.slot === "full") {
+      setForm((f) => ({ ...f, slot: "am" }));
+    }
+  }, [form.program, form.slot]);
 
   // ===== カレンダー用: 当月の予約を日付ごとに集計
   const dayMap = useMemo(() => {
@@ -367,7 +382,7 @@ export default function Page() {
 
           {/* 曜日ヘッダー（月起点）*/}
           <div className="grid grid-cols-7 text-xs text-gray-500">
-            {['月', '火', '水', '木', '金', '土', '日'].map((w) => (
+            {["月", "火", "水", "木", "金", "土", "日"].map((w) => (
               <div key={w} className="p-2 text-center font-medium">{w}</div>
             ))}
           </div>
@@ -396,8 +411,6 @@ export default function Page() {
                   }
                   onClick={() => {
                     setFilter((f) => ({ ...f, date: cell.dateStr }));
-                    // カレンセル→一覧に即反映
-                    fetchReservations();
                   }}
                   title={`${cell.dateStr}の予約を一覧で表示`}
                 >
@@ -424,7 +437,7 @@ export default function Page() {
                   {/* 先頭の1件だけ名前を薄く出す（多すぎると崩れるので）*/}
                   {dayItems[0] && (
                     <div className="mt-1 text-[11px] text-gray-500 truncate" aria-hidden>
-                      {dayItems[0].name}
+                      {(dayItems[0].last_name ?? "") + (dayItems[0].first_name ? ` ${dayItems[0].first_name}` : "")}
                       {dayItems.length > 1 ? ` 他${dayItems.length - 1}件` : ""}
                     </div>
                   )}
@@ -434,7 +447,7 @@ export default function Page() {
           </div>
 
           <p className="text-xs text-gray-500">
-            クリックでその日の予約を下の一覧に反映します。今後ここに「予約確認（詳細）モーダル」を追加予定です。
+            クリックでその日の予約を下の一覧に反映します。
           </p>
         </section>
 
@@ -453,14 +466,11 @@ export default function Page() {
             <label className="block text-sm">プログラム
               <select
                 className="mt-1 w-full rounded-xl border p-2"
-                value={form.program}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    program: isProgram(e.target.value) ? e.target.value : f.program,
-                  }))
-                }
-                required
+                value={filter.program ?? ""}
+                onChange={(e) => setFilter((f) => ({
+                  ...f,
+                  program: e.target.value === "" ? "" : (isProgram(e.target.value) ? e.target.value : f.program),
+                }))}
               >
                 <option value="">すべて</option>
                 <option value="tour">tour</option>
@@ -470,14 +480,11 @@ export default function Page() {
             <label className="block text-sm">時間帯
               <select
                 className="mt-1 w-full rounded-xl border p-2"
-                value={form.slot}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    slot: isSlot(e.target.value) ? e.target.value : f.slot,
-                  }))
-                }
-                required
+                value={filter.slot ?? ""}
+                onChange={(e) => setFilter((f) => ({
+                  ...f,
+                  slot: e.target.value === "" ? "" : (isSlot(e.target.value) ? e.target.value : f.slot),
+                }))}
               >
                 <option value="">すべて</option>
                 <option value="am">am</option>
@@ -514,12 +521,12 @@ export default function Page() {
                 <select
                   className="mt-1 w-full rounded-xl border p-2"
                   value={form.program}
-                  onChange={(e) =>
-                    setFilter((f) => ({
-                      ...f,
-                      program: isProgram(e.target.value) ? e.target.value : "",
-                    }))
-                  }
+                  onChange={(e) => setForm((f) => ({
+                    ...f,
+                    program: isProgram(e.target.value) ? e.target.value : f.program,
+                    // tour で full を選べないよう、切り替え時の矯正
+                    slot: e.target.value === 'tour' && f.slot === 'full' ? 'am' : f.slot,
+                  }))}
                   required
                 >
                   <option value="experience">experience</option>
@@ -530,26 +537,26 @@ export default function Page() {
                 <select
                   className="mt-1 w-full rounded-xl border p-2"
                   value={form.slot}
-                  onChange={(e) => setFilter((f) => ({
+                  onChange={(e) => setForm((f) => ({
                     ...f,
-                    slot: isSlot(e.target.value) ? e.target.value : "",
-                  }))
-                  }
+                    slot: isSlot(e.target.value) ? e.target.value : f.slot,
+                  }))}
                   required
                 >
-                  <option value="am">午前 (am)</option>
-                  <option value="pm">午後 (pm)</option>
-                  <option value="full">全日 (full)</option>
+                  {/* tour は am/pm のみ、experience は am/pm/full */}
+                  {form.program === "tour" ? (
+                    <>
+                      <option value="am">午前 (am)</option>
+                      <option value="pm">午後 (pm)</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="am">午前 (am)</option>
+                      <option value="pm">午後 (pm)</option>
+                      <option value="full">全日 (full)</option>
+                    </>
+                  )}
                 </select>
-              </label>
-              <label className="block text-sm md:col-span-2">お名前（表示用・任意）
-                <input
-                  type="text"
-                  className="mt-1 w-full rounded-xl border p-2"
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="山田 太郎"
-                />
               </label>
             </div>
             <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -591,74 +598,11 @@ export default function Page() {
               >
                 {submitting ? "送信中…" : "予約を作成"}
               </button>
-              <p className="text-xs text-gray-500">時間帯の一意制約により、重複時は409を返します。</p>
+              <p className="text-xs text-gray-500">tour は全日不可（am/pmのみ）に自動制御。</p>
             </div>
           </form>
 
-          {/* 一覧 */}
-          <div className="rounded-2xl bg-white shadow p-5">
-            <h2 className="text-lg font-medium mb-3">予約一覧</h2>
-            {!items ? (
-              <p className="text-sm text-gray-500">読み込み中…</p>
-            ) : items.length === 0 ? (
-              <p className="text-sm text-gray-500">予約はまだありません。</p>
-            ) : (
-              <div className="overflow-auto">
-                <table className="min-w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-gray-500">
-                      <th className="py-2 pr-3">ID</th>
-                      <th className="py-2 pr-3">日付</th>
-                      <th className="py-2 pr-3">プログラム</th>
-                      <th className="py-2 pr-3">時間帯</th>
-                      <th className="py-2 pr-3">氏名</th>
-                      <th className="py-2 pr-3">開始</th>
-                      <th className="py-2 pr-3">終了</th>
-                      <th className="py-2 pr-3">状態</th>
-                      <th className="py-2 pr-3">操作</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.map((r) => (
-                      <tr key={`${r.id ?? r.date + "-" + r.slot}`} className="border-t align-top">
-                        <td className="py-2 pr-3 whitespace-nowrap">{r.id ?? "-"}</td>
-                        <td className="py-2 pr-3 whitespace-nowrap">{typeof r.date === "string" ? r.date.slice(0, 10) : String(r.date)}</td>
-                        <td className="py-2 pr-3 whitespace-nowrap">{r.program}</td>
-                        <td className="py-2 pr-3 whitespace-nowrap">{r.slot}</td>
-                        <td className="py-2 pr-3">{r.name}</td>
-                        <td className="py-2 pr-3 whitespace-nowrap">{jstDateTime(r.start_at)}</td>
-                        <td className="py-2 pr-3 whitespace-nowrap">{jstDateTime(r.end_at)}</td>
-                        <td className="py-2 pr-3 whitespace-nowrap">{r.status ?? "-"}</td>
-                        <td className="py-2 pr-3">
-                          {r.id && (
-                            <div className="flex flex-wrap gap-2">
-                              <button
-                                onClick={() => updateStatus(r.id!, "booked")}
-                                className="px-3 py-1 rounded-xl border hover:bg-gray-50"
-                                title="予約に戻す"
-                              >booked</button>
-                              <button
-                                onClick={() => updateStatus(r.id!, "cancelled")}
-                                className="px-3 py-1 rounded-xl border hover:bg-gray-50"
-                              >cancelled</button>
-                              <button
-                                onClick={() => updateStatus(r.id!, "done")}
-                                className="px-3 py-1 rounded-xl border hover:bg-gray-50"
-                              >done</button>
-                              <button
-                                onClick={() => deleteReservation(r.id!)}
-                                className="px-3 py-1 rounded-xl border text-red-600 hover:bg-red-50"
-                              >削除</button>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+
         </section>
 
         <footer className="text-xs text-gray-500 pt-4">API: <code>{API_BASE}</code></footer>

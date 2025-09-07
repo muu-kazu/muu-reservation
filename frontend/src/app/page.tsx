@@ -11,6 +11,7 @@ import type {
 } from "@/types/reservation";
 import { isProgram, isSlot, getErrorMessage } from "@/types/reservation";
 import CreateReservationModal from "@/components/CreateReservationModal";
+import { motion, AnimatePresence } from "framer-motion"
 
 // ============================================
 // Next.js (App Router) page.tsx — api.phpに合わせた同期版 + カレンダー表示 + モーダル新規作成
@@ -330,7 +331,6 @@ export default function Page() {
         {/* ===== カレンダー表示 ===== */}
         <section className="rounded-2xl bg-white shadow p-5 space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-medium">カレンダー</h2>
             <div className="flex items-center gap-3 flex-wrap">
               <button
                 className="px-3 py-1 rounded-xl border hover:bg-gray-50"
@@ -357,26 +357,42 @@ export default function Page() {
               >
                 今月
               </button>
+              {/* 体験 / 見学 タブ（アニメ付き） */}
+              <div className="ml-2">
+                <div className="relative inline-flex p-1 rounded-2xl bg-gray-100">
+                  <AnimatePresence initial={false}>
+                    <motion.span
+                      key={calProgram}
+                      layoutId="program-pill"
+                      className="absolute top-1 bottom-1 rounded-xl bg-white shadow"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ type: "spring", stiffness: 420, damping: 36, mass: 0.6 }}
+                      style={{
+                        left: calProgram === "experience" ? 4 : 64, // 64px ≒ ボタン幅に合わせて調整
+                        right: calProgram === "experience" ? 64 : 4,
+                      }}
+                    />
+                  </AnimatePresence>
 
-              {/* 体験 / 見学 トグル */}
-              <div className="ml-2 inline-flex rounded-xl border overflow-hidden">
-                <button
-                  type="button"
-                  className={"px-3 py-1 text-sm " + (calProgram === "experience" ? "bg-gray-900 text-white" : "bg-white hover:bg-gray-50")}
-                  onClick={() => setCalProgram("experience")}
-                  aria-pressed={calProgram === "experience"}
-                >
-                  体験
-                </button>
-                <button
-                  type="button"
-                  className={"px-3 py-1 text-sm border-l " + (calProgram === "tour" ? "bg-gray-900 text-white" : "bg-white hover:bg-gray-50")}
-                  onClick={() => setCalProgram("tour")}
-                  aria-pressed={calProgram === "tour"}
-                >
-                  見学
-                </button>
+                  {(["experience", "tour"] as const).map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setCalProgram(p)}
+                      aria-pressed={calProgram === p}
+                      className={[
+                        "relative z-10 px-4 py-1.5 text-sm rounded-xl transition",
+                        calProgram === p ? "text-gray-900" : "text-gray-500 hover:text-gray-700"
+                      ].join(" ")}
+                    >
+                      {p === "experience" ? "体験" : "見学"}
+                    </button>
+                  ))}
+                </div>
               </div>
+
             </div>
           </div>
 
@@ -388,65 +404,91 @@ export default function Page() {
           </div>
 
           {/* 月グリッド — PC/タブレットのみ */}
-          <div className="hidden md:grid grid-cols-7 gap-1">
-            {monthCells.map((cell) => {
-              const dayItems = dayMap[cell.dateStr] ?? [];
-              const counts = dayItems.reduce<SlotCounts>(
-                (acc, r) => ({ ...acc, [r.slot]: (acc[r.slot] ?? 0) + 1 }),
-                { am: 0, pm: 0, full: 0 }
-              );
-              const total = dayItems.length;
-              const isToday = cell.dateStr === toDateStr(new Date());
-              const isWeekendCell = isWeekendStr(cell.dateStr);
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={formatMonthJP(calCursor) + "_" + calProgram}
+              className="hidden md:grid grid-cols-7 gap-1"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
+            >
+              {monthCells.map((cell, i) => {
+                const dayItems = dayMap[cell.dateStr] ?? [];
+                const counts = dayItems.reduce<SlotCounts>(
+                  (acc, r) => ({ ...acc, [r.slot]: (acc[r.slot] ?? 0) + 1 }),
+                  { am: 0, pm: 0, full: 0 }
+                );
+                const total = dayItems.length;
+                const isToday = cell.dateStr === toDateStr(new Date());
+                const isWeekendCell = isWeekendStr(cell.dateStr);
 
-              return (
-                <div
-                  key={cell.dateStr}
-                  className={
-                    "relative h-24 rounded-xl border p-2 text-left transition cursor-pointer " +
-                    (cell.inMonth ? "bg-white" : "bg-gray-50") +
-                    (isToday ? " ring-2 ring-blue-500" : "")
+                const handleTap = () => {
+                  if (!isWeekendCell) {
+                    // 直接「新規作成モーダル」を開く（これが“タップで予約”）
+                    openCreate(cell.dateStr);
+                  } else {
+                    // 休業日は一覧へ（好みで変えてOK）
+                    setFilter((f) => ({ ...f, date: cell.dateStr, program: calProgram }));
                   }
-                  onClick={() => setFilter((f) => ({ ...f, date: cell.dateStr, program: calProgram }))}
-                  title={`${cell.dateStr}の予約を一覧で表示`}
-                  role="button"
-                  tabIndex={0}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className={"text-sm " + (cell.inMonth ? "text-gray-900" : "text-gray-400")}>{cell.day}</span>
-                    {total > 0 && (
-                      <span className="text-[11px] rounded-full px-2 py-0.5 border bg-gray-50">{total}</span>
-                    )}
-                  </div>
+                };
 
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    {counts.full > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-md border">FULL×{counts.full}</span>}
-                    {counts.am > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-md border">AM×{counts.am}</span>}
-                    {counts.pm > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-md border">PM×{counts.pm}</span>}
-                  </div>
-
-                  {dayItems[0] && (
-                    <div className="mt-1 text-[11px] text-gray-500 truncate" aria-hidden>
-                      {(dayItems[0].last_name ?? "") + (dayItems[0].first_name ? ` ${dayItems[0].first_name}` : "")}
-                      {dayItems.length > 1 ? ` 他${dayItems.length - 1}件` : ""}
+                return (
+                  <motion.button
+                    key={cell.dateStr}
+                    type="button"
+                    onClick={handleTap}
+                    className={[
+                      "relative h-24 rounded-xl border p-2 text-left transition",
+                      cell.inMonth ? "bg-white" : "bg-gray-50",
+                      isToday ? "ring-2 ring-blue-500" : "hover:shadow-sm"
+                    ].join(" ")}
+                    whileTap={{ scale: 0.98 }}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.15, delay: Math.min(i * 0.0025, 0.12) }}
+                    title={`${cell.dateStr}の操作`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className={"text-sm " + (cell.inMonth ? "text-gray-900" : "text-gray-400")}>
+                        {cell.day}
+                      </span>
+                      {total > 0 && (
+                        <span className="text-[11px] rounded-full px-2 py-0.5 border bg-gray-50">{total}</span>
+                      )}
                     </div>
-                  )}
 
-                  {!isWeekendCell ? (
-                    <span
-                      className="absolute right-1 bottom-1 inline-flex items-center justify-center h-6 w-6 rounded-full border text-xs bg-white hover:bg-gray-50"
-                      onClick={(e) => { e.stopPropagation(); openCreate(cell.dateStr); }}
-                      title="この日に予約を追加"
-                      role="button"
-                      tabIndex={0}
-                    >＋</span>
-                  ) : (
-                    <span className="absolute right-1 bottom-1 inline-flex items-center justify-center h-6 w-6 rounded-full border text-xs text-gray-400 bg-gray-50 cursor-not-allowed" aria-disabled="true">休</span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {counts.full > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-md border">FULL×{counts.full}</span>}
+                      {counts.am > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-md border">AM×{counts.am}</span>}
+                      {counts.pm > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-md border">PM×{counts.pm}</span>}
+                    </div>
+
+                    {dayItems[0] && (
+                      <div className="mt-1 text-[11px] text-gray-500 truncate" aria-hidden>
+                        {(dayItems[0].last_name ?? "") + (dayItems[0].first_name ? ` ${dayItems[0].first_name}` : "")}
+                        {dayItems.length > 1 ? ` 他${dayItems.length - 1}件` : ""}
+                      </div>
+                    )}
+
+                    {/* 右下の“＋/休”は見た目のヒントに留める */}
+                    {!isWeekendCell ? (
+                      <span
+                        className="pointer-events-none absolute right-1 bottom-1 inline-flex h-6 w-6 items-center justify-center rounded-full border text-xs bg-white"
+                        aria-hidden
+                      >＋</span>
+                    ) : (
+                      <span
+                        className="pointer-events-none absolute right-1 bottom-1 inline-flex h-6 w-6 items-center justify-center rounded-full border text-xs text-gray-400 bg-gray-50"
+                        aria-hidden
+                      >休</span>
+                    )}
+                  </motion.button>
+                );
+              })}
+            </motion.div>
+          </AnimatePresence>
+
 
           {/* ▼ モバイル用アジェンダ表示（スマホのみ） */}
           <div className="md:hidden -mx-2">
@@ -465,12 +507,18 @@ export default function Page() {
 
                 return (
                   <li key={cell.dateStr}>
-                    <div
+                    <motion.div
                       className="flex items-center gap-3 px-3 py-2 active:bg-gray-50"
-                      onClick={() => setFilter((f) => ({ ...f, date: cell.dateStr, program: calProgram }))}
+                      onClick={() =>
+                        setFilter((f) => ({ ...f, date: cell.dateStr, program: calProgram }))
+                      }
                       role="button"
                       tabIndex={0}
                       title={`${cell.dateStr}の予約を一覧で表示`}
+                      initial={{ opacity: 0, y: 8 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      viewport={{ once: true, margin: "-10% 0px -10% 0px" }}
+                      transition={{ duration: 0.18 }}
                     >
                       {/* 日付バッジ */}
                       <div className={"w-14 shrink-0 text-center"}>
@@ -516,7 +564,7 @@ export default function Page() {
                           title="土日は休業日のため新規は作成できません"
                         >休</div>
                       )}
-                    </div>
+                    </motion.div>
                   </li>
                 );
               })}

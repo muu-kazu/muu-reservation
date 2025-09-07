@@ -14,10 +14,6 @@ import CreateReservationModal from "@/components/CreateReservationModal";
 
 // ============================================
 // Next.js (App Router) page.tsx — api.phpに合わせた同期版 + カレンダー表示 + モーダル新規作成
-// 変更点（2025-09-07）
-// - カレンダーセル内「＋」とヘッダー「＋新規予約」からモーダルで作成
-// - 予約作成は createReservation(payload) に集約、成功後その日付で一覧に反映
-// - 既存のページ内フォームはコメントアウト（必要なら戻せる）
 // ============================================
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000/api";
@@ -47,6 +43,7 @@ function nextBusinessDayFromStr(s: string): string {
   return nextBusinessDay(new Date(y, m - 1, d));
 }
 
+// === 月セル生成 ===
 function buildMonthCells(cursor: Date, mondayStart = true) {
   const y = cursor.getFullYear?.() ?? cursor.getFullYear();
   const m = cursor.getMonth(); // 0-11
@@ -71,6 +68,9 @@ function buildMonthCells(cursor: Date, mondayStart = true) {
 function formatMonthJP(d: Date) {
   return `${d.getFullYear()}年${d.getMonth() + 1}月`;
 }
+
+// === 共通タイプ（reduce 用） ===
+type SlotCounts = Record<Slot, number>;
 
 export default function Page() {
   // ===== State
@@ -104,15 +104,13 @@ export default function Page() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createDate, setCreateDate] = useState<string | undefined>(undefined);
   const [createSlot, setCreateSlot] = useState<Slot | undefined>(undefined);
-  const [createProgram, setCreateProgram] = useState<Program | undefined>(undefined);
 
   function openCreate(dateStr?: string, slot?: Slot) {
-    // デフォルトは「次の平日」。土日が渡ってきた場合も平日に補正。
+    // デフォは「次の平日」。土日が渡ってきた場合も平日に補正。
     const init = dateStr ?? nextBusinessDay();
     const safe = isWeekendStr(init) ? nextBusinessDayFromStr(init) : init;
     setCreateDate(safe);
     setCreateSlot(slot);
-    setCreateProgram(calProgram); // ← 選択中を初期値に
     setIsCreateOpen(true);
   }
 
@@ -181,12 +179,12 @@ export default function Page() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // カレンダー: 月が変わるたびに一応再フェッチ（新規が入ったかもしれないため）
+  // カレンダー: 月が変わるたび再フェッチ
   useEffect(() => {
     fetchAllReservations();
   }, [monthKey]);
 
-  // filter が変わったら一覧を再取得（カレンダー/絞り込みの即時反映）
+  // filter 変更で一覧を再取得
   useEffect(() => {
     fetchReservations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -235,9 +233,6 @@ export default function Page() {
     }
   };
 
-  // 既存の onSubmit（ページ内フォーム用）は未使用。残しておきたい場合は createReservation を呼ぶように変えてもOK。
-  // const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => { ... }
-
   const updateStatus = async (id: number, status: Status) => {
     setError(null);
     setSuccess(null);
@@ -285,13 +280,11 @@ export default function Page() {
     }
   };
 
-  // ===== カレンダー用: 当月の予約を日付ごとに集計
+  // ===== カレンダー用: 当月の予約を日付ごとに集計（体験/見学の切替反映）
   const dayMap = useMemo(() => {
     const map: Record<string, Reservation[]> = {};
     (allItems ?? []).forEach((r) => {
-      // 体験/見学 切替の反映
       if (r.program !== calProgram) return;
-
       const ds = toDateStr(r.date);
       if (ds.startsWith(monthKey)) {
         (map[ds] ||= []).push(r);
@@ -364,6 +357,8 @@ export default function Page() {
               >
                 今月
               </button>
+
+              {/* 体験 / 見学 トグル */}
               <div className="ml-2 inline-flex rounded-xl border overflow-hidden">
                 <button
                   type="button"
@@ -385,28 +380,25 @@ export default function Page() {
             </div>
           </div>
 
-          {/* 曜日ヘッダー（月起点） — PC/タブレットのみ */}
+          {/* 曜日ヘッダー — PC/タブレットのみ */}
           <div className="hidden md:grid grid-cols-7 text-xs text-gray-500">
             {["月", "火", "水", "木", "金", "土", "日"].map((w) => (
               <div key={w} className="p-2 text-center font-medium">{w}</div>
             ))}
           </div>
 
-          {/* グリッド */}
-          <div className="grid grid-cols-7 gap-1">
+          {/* 月グリッド — PC/タブレットのみ */}
+          <div className="hidden md:grid grid-cols-7 gap-1">
             {monthCells.map((cell) => {
               const dayItems = dayMap[cell.dateStr] ?? [];
-              type SlotCounts = Record<Slot, number>;
               const counts = dayItems.reduce<SlotCounts>(
-                (acc, r) => {
-                  acc[r.slot] = (acc[r.slot] ?? 0) + 1;
-                  return acc;
-                },
+                (acc, r) => ({ ...acc, [r.slot]: (acc[r.slot] ?? 0) + 1 }),
                 { am: 0, pm: 0, full: 0 }
               );
               const total = dayItems.length;
               const isToday = cell.dateStr === toDateStr(new Date());
               const isWeekendCell = isWeekendStr(cell.dateStr);
+
               return (
                 <div
                   key={cell.dateStr}
@@ -415,9 +407,7 @@ export default function Page() {
                     (cell.inMonth ? "bg-white" : "bg-gray-50") +
                     (isToday ? " ring-2 ring-blue-500" : "")
                   }
-                  onClick={() => {
-                    setFilter((f) => ({ ...f, date: cell.dateStr, program: calProgram }));
-                  }}
+                  onClick={() => setFilter((f) => ({ ...f, date: cell.dateStr, program: calProgram }))}
                   title={`${cell.dateStr}の予約を一覧で表示`}
                   role="button"
                   tabIndex={0}
@@ -429,20 +419,12 @@ export default function Page() {
                     )}
                   </div>
 
-                  {/* スロット別バッジ */}
                   <div className="mt-2 flex flex-wrap gap-1">
-                    {counts.full > 0 && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-md border">FULL×{counts.full}</span>
-                    )}
-                    {counts.am > 0 && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-md border">AM×{counts.am}</span>
-                    )}
-                    {counts.pm > 0 && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-md border">PM×{counts.pm}</span>
-                    )}
+                    {counts.full > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-md border">FULL×{counts.full}</span>}
+                    {counts.am > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-md border">AM×{counts.am}</span>}
+                    {counts.pm > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-md border">PM×{counts.pm}</span>}
                   </div>
 
-                  {/* 先頭の1件だけ名前を薄く出す（多すぎると崩れるので）*/}
                   {dayItems[0] && (
                     <div className="mt-1 text-[11px] text-gray-500 truncate" aria-hidden>
                       {(dayItems[0].last_name ?? "") + (dayItems[0].first_name ? ` ${dayItems[0].first_name}` : "")}
@@ -450,59 +432,112 @@ export default function Page() {
                     </div>
                   )}
 
-                  {/* ➕ 新規作成（右下固定） ※ button ネスト回避のため span で */}
-                  {/* 右下：平日=「＋」 / 週末=「休」 */}
                   {!isWeekendCell ? (
                     <span
                       className="absolute right-1 bottom-1 inline-flex items-center justify-center h-6 w-6 rounded-full border text-xs bg-white hover:bg-gray-50"
-                      aria-label={`${cell.dateStr} に予約を追加`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openCreate(cell.dateStr);
-                      }}
+                      onClick={(e) => { e.stopPropagation(); openCreate(cell.dateStr); }}
                       title="この日に予約を追加"
                       role="button"
                       tabIndex={0}
-                    >
-                      ＋
-                    </span>
+                    >＋</span>
                   ) : (
-                    <span
-                      className="absolute right-1 bottom-1 inline-flex items-center justify-center h-6 w-6 rounded-full border text-xs text-gray-400 bg-gray-50 cursor-not-allowed"
-                      title="土日は休業日のため新規は作成できません"
-                      aria-disabled="true"
-                    >
-                      休
-                    </span>
+                    <span className="absolute right-1 bottom-1 inline-flex items-center justify-center h-6 w-6 rounded-full border text-xs text-gray-400 bg-gray-50 cursor-not-allowed" aria-disabled="true">休</span>
                   )}
                 </div>
               );
             })}
           </div>
 
-          <p className="text-xs text-gray-500">クリックでその日の予約を下の一覧に反映します。右下「＋」でその日に新規作成。</p>
+          {/* ▼ モバイル用アジェンダ表示（スマホのみ） */}
+          <div className="md:hidden -mx-2">
+            <ul className="divide-y divide-gray-100 rounded-xl border border-gray-100 overflow-hidden bg-white">
+              {monthCells.map((cell) => {
+                const dayItems = dayMap[cell.dateStr] ?? [];
+                const counts = dayItems.reduce<SlotCounts>(
+                  (acc, r) => ({ ...acc, [r.slot]: (acc[r.slot] ?? 0) + 1 }),
+                  { am: 0, pm: 0, full: 0 }
+                );
+                const total = dayItems.length;
+                const isToday = cell.dateStr === toDateStr(new Date());
+                const isWeekendCell = isWeekendStr(cell.dateStr);
+                const dow = new Date(cell.dateStr).getDay();
+                const w = ["日", "月", "火", "水", "木", "金", "土"][dow];
+
+                return (
+                  <li key={cell.dateStr}>
+                    <div
+                      className="flex items-center gap-3 px-3 py-2 active:bg-gray-50"
+                      onClick={() => setFilter((f) => ({ ...f, date: cell.dateStr, program: calProgram }))}
+                      role="button"
+                      tabIndex={0}
+                      title={`${cell.dateStr}の予約を一覧で表示`}
+                    >
+                      {/* 日付バッジ */}
+                      <div className={"w-14 shrink-0 text-center"}>
+                        <div className={"text-base leading-5 " + (isToday ? "font-semibold text-blue-600" : "text-gray-900")}>
+                          {cell.day}
+                        </div>
+                        <div className={"text-[10px] " + (isWeekendCell ? "text-red-500" : "text-gray-500")}>{w}</div>
+                      </div>
+
+                      {/* 件数 / 先頭氏名 */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          {total > 0 && (
+                            <span className="text-[11px] rounded-full px-2 py-0.5 border bg-gray-50">{total}件</span>
+                          )}
+                          <div className="flex flex-wrap gap-1">
+                            {counts.full > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-md border">FULL×{counts.full}</span>}
+                            {counts.am > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-md border">AM×{counts.am}</span>}
+                            {counts.pm > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-md border">PM×{counts.pm}</span>}
+                          </div>
+                        </div>
+                        {dayItems[0] && (
+                          <div className="mt-0.5 text-[11px] text-gray-500 truncate" aria-hidden>
+                            {(dayItems[0].last_name ?? "") + (dayItems[0].first_name ? ` ${dayItems[0].first_name}` : "")}
+                            {dayItems.length > 1 ? ` 他${dayItems.length - 1}件` : ""}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 右端：＋ / 休 */}
+                      {!isWeekendCell ? (
+                        <button
+                          type="button"
+                          className="h-8 w-8 shrink-0 rounded-full border text-base leading-8 text-center bg-white hover:bg-gray-50"
+                          onClick={(e) => { e.stopPropagation(); openCreate(cell.dateStr); }}
+                          aria-label={`${cell.dateStr} に予約を追加`}
+                          title="この日に予約を追加"
+                        >＋</button>
+                      ) : (
+                        <div
+                          className="h-8 w-8 shrink-0 rounded-full border text-xs leading-8 text-center text-gray-400 bg-gray-50"
+                          aria-disabled="true"
+                          title="土日は休業日のため新規は作成できません"
+                        >休</div>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+
+          <p className="text-xs text-gray-500">日付タップで一覧に反映。右端「＋」でその日に新規作成。</p>
         </section>
 
         {/* ===== 検索/絞り込み（一覧） ===== */}
         {/* ここに一覧テーブルなどを置く想定（省略） */}
 
-        {/* ===== 旧：ページ内「作成フォーム」（モーダル化したので停止） ===== */}
-        {/*
-        <section className="grid md:grid-cols-2 gap-6">
-          <form onSubmit={onSubmit} className="rounded-2xl bg-white shadow p-5 space-y-4">
-            ...（旧フォーム）...
-          </form>
-        </section>
-        */}
-
         <footer className="text-xs text-gray-500 pt-4">API: <code>{API_BASE}</code></footer>
       </div>
 
-      {/* 予約作成モーダル（components 化） */}
+      {/* 予約作成モーダル */}
       <CreateReservationModal
         open={isCreateOpen}
         initialDate={createDate}
         initialSlot={createSlot}
+        // initialProgram={calProgram} // ← モーダルが対応済みなら有効化
         onClose={() => setIsCreateOpen(false)}
         onSubmit={createReservation}
       />

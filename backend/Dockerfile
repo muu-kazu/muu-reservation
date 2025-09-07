@@ -5,13 +5,6 @@ FROM richarvey/nginx-php-fpm:3.1.6
 WORKDIR /var/www/html
 COPY . .
 
-# PostgreSQL用のPHP拡張を追加（コンテナ内のPHPで必須）
-USER root
-RUN apt-get update \
- && apt-get install -y libpq-dev \
- && docker-php-ext-install pdo pdo_pgsql pgsql \
- && apt-get clean && rm -rf /var/lib/apt/lists/*
-
 # Laravelのpublic（Root=backend のときは /var/www/html/public が正解）
 ENV WEBROOT=/var/www/html/public
 

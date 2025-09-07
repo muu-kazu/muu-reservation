@@ -1,60 +1,73 @@
-// src/components/Modal.tsx
 "use client";
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect } from "react";
+import { createPortal } from "react-dom";
 
 type ModalProps = {
     open: boolean;
-    title?: string;
     onClose: () => void;
+    title?: string;
     children: React.ReactNode;
-    footer?: React.ReactNode;
 };
 
-export default function Modal({ open, title, onClose, children, footer }: ModalProps) {
-    const panelRef = useRef<HTMLDivElement | null>(null);
-
+export default function Modal({ open, onClose, title, children }: ModalProps) {
+    // 背景スクロールをロック
     useEffect(() => {
-        function onKey(e: KeyboardEvent) {
-            if (e.key === "Escape") onClose();
-        }
-        if (open) {
-            window.addEventListener("keydown", onKey);
-            // 初回フォーカス
-            setTimeout(() => panelRef.current?.focus(), 0);
-            document.documentElement.style.overflow = "hidden";
-        }
+        if (!open) return;
+        const prev = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
         return () => {
-            window.removeEventListener("keydown", onKey);
-            document.documentElement.style.overflow = "";
+            document.body.style.overflow = prev;
         };
-    }, [open, onClose]);
+    }, [open]);
 
     if (!open) return null;
 
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true">
+    return createPortal(
+        <div
+            className="fixed inset-0 z-50"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={title ? "modal-title" : undefined}
+        >
+            {/* 背景 */}
             <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-            <div
-                ref={panelRef}
-                tabIndex={-1}
-                className="relative w-full max-w-xl rounded-2xl bg-white shadow-lg p-5 outline-none"
-            >
-                <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-base font-semibold">{title}</h3>
-                    <button
-                        className="h-8 w-8 rounded-full hover:bg-gray-100"
-                        onClick={onClose}
-                        aria-label="閉じる"
-                    >
-                        ×
-                    </button>
+
+            {/* コンテナ：スマホ=下寄せ(ボトムシート) / md+=中央 */}
+            <div className="absolute inset-0 flex items-end md:items-center justify-center p-2 md:p-4 pointer-events-none">
+                {/* モーダル本体 */}
+                <div
+                    className="
+            pointer-events-auto w-full md:max-w-xl
+            bg-white shadow-xl ring-1 ring-black/5
+            rounded-t-2xl md:rounded-2xl
+            /* モバイルでの縦スクロール領域確保：dvh でブラウザUIの高さ変動に追従 */
+            max-h-[calc(100dvh-1rem)] md:max-h-[min(85vh,48rem)]
+            overflow-y-auto
+          "
+                >
+                    {/* ヘッダー：sticky で常に表示 */}
+                    <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b bg-white/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-white/75">
+                        <h3 id="modal-title" className="text-base font-medium">
+                            {title}
+                        </h3>
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="h-8 w-8 rounded-full border text-lg leading-8 text-center hover:bg-gray-50"
+                            aria-label="閉じる"
+                        >
+                            ×
+                        </button>
+                    </div>
+
+                    {/* ボディ：ここがスクロールする */}
+                    <div className="px-4 py-4 pb-[max(env(safe-area-inset-bottom),1rem)]">
+                        {children}
+                    </div>
                 </div>
-
-                <div>{children}</div>
-
-                {footer && <div className="mt-4">{footer}</div>}
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }

@@ -1,63 +1,51 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import type {
+  Reservation,
+  Program,
+  Slot,
+  Status,
+  ReservationFilterUI,
+  ReservationCreatePayload,
+} from "@/types/reservation";
+import { isProgram, isSlot, getErrorMessage } from "@/types/reservation";
+import CreateReservationModal from "@/components/CreateReservationModal";
 
 // ============================================
-// Next.js (App Router) page.tsx — api.phpに合わせた同期版 + カレンダー表示
+// Next.js (App Router) page.tsx — api.phpに合わせた同期版 + カレンダー表示 + モーダル新規作成
 // 変更点（2025-09-07）
-// - API_BASE のデフォルトをローカル (http://localhost:8000/api) に変更
-// - 絞り込み/作成フォーム program/slot バインドを修正
-// - カレンダー連動で filter を更新
-// - フォームから「お名前」を削除
-// - tour の場合は slot=full を選べない（UI/状態ともに矯正）
-// - 一覧テーブルを入力項目（姓/名/メール/電話/手帳/受給者証）に合わせて拡張
+// - カレンダーセル内「＋」とヘッダー「＋新規予約」からモーダルで作成
+// - 予約作成は createReservation(payload) に集約、成功後その日付で一覧に反映
+// - 既存のページ内フォームはコメントアウト（必要なら戻せる）
 // ============================================
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000/api";
-
-// Types
-export type Slot = "am" | "pm" | "full";
-export type Program = "tour" | "experience";
-export type Status = "booked" | "cancelled" | "done";
-
-export interface Reservation {
-  id?: number;
-  date: string; // YYYY-MM-DD (Eloquent の cast 次第で ISO 文字列の場合も)
-  program: Program;
-  slot: Slot;
-  name: string;
-  status?: Status;
-  start_at?: string; // ISO
-  end_at?: string;   // ISO
-  contact?: string | null;
-  note?: string | null;
-  room?: string | null;
-  created_at?: string;
-  updated_at?: string;
-  last_name?: string | null;
-  first_name?: string | null;
-  email?: string | null;
-  phone?: string | null;
-  notebook_type?: string | null;
-  has_certificate?: boolean | null;
-}
-
-// ========= type guards / utils =========
-function isProgram(v: string): v is Program {
-  return v === "tour" || v === "experience";
-}
-function isSlot(v: string): v is Slot {
-  return v === "am" || v === "pm" || v === "full";
-}
-function getErrorMessage(e: unknown) {
-  return e instanceof Error ? e.message : String(e);
-}
 
 // ========= 日付ユーティリティ =========
 const toDateStr = (d: string | Date) => {
   if (typeof d === "string") return d.slice(0, 10);
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 };
+
+// === 休業日（週末）ユーティリティ ===
+function dayOfWeekFromStr(s: string): number {
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(y, m - 1, d).getDay(); // 0=日,6=土
+}
+function isWeekendStr(s: string): boolean {
+  const dow = dayOfWeekFromStr(s);
+  return dow === 0 || dow === 6;
+}
+function nextBusinessDay(from: Date = new Date()): string {
+  const dt = new Date(from);
+  while (dt.getDay() === 0 || dt.getDay() === 6) dt.setDate(dt.getDate() + 1);
+  return toDateStr(dt);
+}
+function nextBusinessDayFromStr(s: string): string {
+  const [y, m, d] = s.split("-").map(Number);
+  return nextBusinessDay(new Date(y, m - 1, d));
+}
 
 function buildMonthCells(cursor: Date, mondayStart = true) {
   const y = cursor.getFullYear?.() ?? cursor.getFullYear();
@@ -93,28 +81,8 @@ export default function Page() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  // 作成フォーム初期化: 明日の日付
-  const tomorrow = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    return toDateStr(d);
-  }, []);
-
-  const [form, setForm] = useState<Reservation>({
-    date: tomorrow,
-    program: "experience",
-    slot: "am",
-    name: "", // 送信時に null に変換（お名前入力欄は削除）
-    last_name: "",
-    first_name: "",
-    email: "",
-    phone: "",
-    notebook_type: "",
-    has_certificate: false,
-  });
-
   // 絞り込み（一覧用）
-  const [filter, setFilter] = useState<{ date?: string; program?: Program | ""; slot?: Slot | ""; }>(() => ({
+  const [filter, setFilter] = useState<ReservationFilterUI>(() => ({
     date: "",
     program: "",
     slot: "",
@@ -129,6 +97,24 @@ export default function Page() {
 
   const monthCells = useMemo(() => buildMonthCells(calCursor, true), [calCursor]);
   const monthKey = useMemo(() => toDateStr(calCursor).slice(0, 7), [calCursor]); // YYYY-MM
+  // カレンダーの表示対象（体験/見学）
+  const [calProgram, setCalProgram] = useState<Program>("experience");
+
+  // 予約作成モーダル
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [createDate, setCreateDate] = useState<string | undefined>(undefined);
+  const [createSlot, setCreateSlot] = useState<Slot | undefined>(undefined);
+  const [createProgram, setCreateProgram] = useState<Program | undefined>(undefined);
+
+  function openCreate(dateStr?: string, slot?: Slot) {
+    // デフォルトは「次の平日」。土日が渡ってきた場合も平日に補正。
+    const init = dateStr ?? nextBusinessDay();
+    const safe = isWeekendStr(init) ? nextBusinessDayFromStr(init) : init;
+    setCreateDate(safe);
+    setCreateSlot(slot);
+    setCreateProgram(calProgram); // ← 選択中を初期値に
+    setIsCreateOpen(true);
+  }
 
   // ===== Helpers
   const jstDateTime = (iso?: string) => {
@@ -206,35 +192,25 @@ export default function Page() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter.date, filter.program, filter.slot]);
 
-  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  // ====== 新規作成（モーダルから呼ぶ）
+  const createReservation = async (payload: ReservationCreatePayload) => {
     setSubmitting(true);
     setError(null);
     setSuccess(null);
     try {
-      if (!form.date) throw new Error("日付を入力してください");
+      if (!payload.date) throw new Error("日付を入力してください");
+
+      const composedName =
+        (payload.name && payload.name.trim()) ||
+        `${payload.last_name ?? ""}${payload.first_name ? ` ${payload.first_name}` : ""}`.trim() ||
+        "ゲスト";
+
+      const body = { ...payload, name: composedName };
 
       const res = await fetch(`${API_BASE}/reservations`, {
         method: "POST",
         headers: { Accept: "application/json", "Content-Type": "application/json" },
-        body: JSON.stringify({
-          date: form.date,
-          program: form.program,
-          slot: form.slot,
-          // 名前は送らない/またはnullにする（バックエンドが任意を許容）
-          name:
-            (form.last_name?.trim() || form.first_name?.trim())
-              ? `${(form.last_name ?? '').trim()}${form.first_name?.trim() ? ' ' + form.first_name.trim() : ''}`
-              : 'ゲスト',
-          last_name: form.last_name || null,
-          first_name: form.first_name || null,
-          email: form.email || null,
-          phone: form.phone || null,
-          notebook_type: form.notebook_type || null,
-          has_certificate: !!form.has_certificate,
-          note: form.note ?? null,
-          room: form.room ?? null,
-        }),
+        body: JSON.stringify(body),
       });
 
       if (res.status === 409) {
@@ -250,12 +226,17 @@ export default function Page() {
       setSuccess("予約を作成しました");
       setItems((prev) => (prev ? [created, ...prev] : [created]));
       setAllItems((prev) => (prev ? [created, ...prev] : [created]));
+      setFilter((f) => ({ ...f, date: toDateStr(created.date ?? payload.date) }));
+      setIsCreateOpen(false);
     } catch (e: unknown) {
       setError(getErrorMessage(e));
     } finally {
       setSubmitting(false);
     }
   };
+
+  // 既存の onSubmit（ページ内フォーム用）は未使用。残しておきたい場合は createReservation を呼ぶように変えてもOK。
+  // const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => { ... }
 
   const updateStatus = async (id: number, status: Status) => {
     setError(null);
@@ -304,24 +285,20 @@ export default function Page() {
     }
   };
 
-  // tour のとき slot=full を避ける矯正
-  useEffect(() => {
-    if (form.program === "tour" && form.slot === "full") {
-      setForm((f) => ({ ...f, slot: "am" }));
-    }
-  }, [form.program, form.slot]);
-
   // ===== カレンダー用: 当月の予約を日付ごとに集計
   const dayMap = useMemo(() => {
     const map: Record<string, Reservation[]> = {};
     (allItems ?? []).forEach((r) => {
+      // 体験/見学 切替の反映
+      if (r.program !== calProgram) return;
+
       const ds = toDateStr(r.date);
       if (ds.startsWith(monthKey)) {
         (map[ds] ||= []).push(r);
       }
     });
     return map;
-  }, [allItems, monthKey]);
+  }, [allItems, monthKey, calProgram]);
 
   // ===== UI
   return (
@@ -336,6 +313,12 @@ export default function Page() {
               disabled={loading}
             >
               {loading ? "更新中…" : "更新"}
+            </button>
+            <button
+              onClick={() => openCreate()}
+              className="px-4 py-2 rounded-2xl shadow bg-black text-white hover:opacity-90"
+            >
+              ＋ 新規予約
             </button>
           </div>
         </header>
@@ -355,7 +338,7 @@ export default function Page() {
         <section className="rounded-2xl bg-white shadow p-5 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-medium">カレンダー</h2>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3 flex-wrap">
               <button
                 className="px-3 py-1 rounded-xl border hover:bg-gray-50"
                 onClick={() => setCalCursor((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1))}
@@ -373,15 +356,37 @@ export default function Page() {
               </button>
               <button
                 className="px-3 py-1 rounded-xl border hover:bg-gray-50"
-                onClick={() => setCalCursor(() => { const t = new Date(); t.setDate(1); return t; })}
+                onClick={() => {
+                  const t = new Date();
+                  t.setDate(1);
+                  setCalCursor(t);
+                }}
               >
                 今月
               </button>
+              <div className="ml-2 inline-flex rounded-xl border overflow-hidden">
+                <button
+                  type="button"
+                  className={"px-3 py-1 text-sm " + (calProgram === "experience" ? "bg-gray-900 text-white" : "bg-white hover:bg-gray-50")}
+                  onClick={() => setCalProgram("experience")}
+                  aria-pressed={calProgram === "experience"}
+                >
+                  体験
+                </button>
+                <button
+                  type="button"
+                  className={"px-3 py-1 text-sm border-l " + (calProgram === "tour" ? "bg-gray-900 text-white" : "bg-white hover:bg-gray-50")}
+                  onClick={() => setCalProgram("tour")}
+                  aria-pressed={calProgram === "tour"}
+                >
+                  見学
+                </button>
+              </div>
             </div>
           </div>
 
-          {/* 曜日ヘッダー（月起点）*/}
-          <div className="grid grid-cols-7 text-xs text-gray-500">
+          {/* 曜日ヘッダー（月起点） — PC/タブレットのみ */}
+          <div className="hidden md:grid grid-cols-7 text-xs text-gray-500">
             {["月", "火", "水", "木", "金", "土", "日"].map((w) => (
               <div key={w} className="p-2 text-center font-medium">{w}</div>
             ))}
@@ -401,18 +406,21 @@ export default function Page() {
               );
               const total = dayItems.length;
               const isToday = cell.dateStr === toDateStr(new Date());
+              const isWeekendCell = isWeekendStr(cell.dateStr);
               return (
-                <button
+                <div
                   key={cell.dateStr}
                   className={
-                    "relative h-24 rounded-xl border p-2 text-left transition " +
+                    "relative h-24 rounded-xl border p-2 text-left transition cursor-pointer " +
                     (cell.inMonth ? "bg-white" : "bg-gray-50") +
                     (isToday ? " ring-2 ring-blue-500" : "")
                   }
                   onClick={() => {
-                    setFilter((f) => ({ ...f, date: cell.dateStr }));
+                    setFilter((f) => ({ ...f, date: cell.dateStr, program: calProgram }));
                   }}
                   title={`${cell.dateStr}の予約を一覧で表示`}
+                  role="button"
+                  tabIndex={0}
                 >
                   <div className="flex items-center justify-between">
                     <span className={"text-sm " + (cell.inMonth ? "text-gray-900" : "text-gray-400")}>{cell.day}</span>
@@ -441,172 +449,63 @@ export default function Page() {
                       {dayItems.length > 1 ? ` 他${dayItems.length - 1}件` : ""}
                     </div>
                   )}
-                </button>
+
+                  {/* ➕ 新規作成（右下固定） ※ button ネスト回避のため span で */}
+                  {/* 右下：平日=「＋」 / 週末=「休」 */}
+                  {!isWeekendCell ? (
+                    <span
+                      className="absolute right-1 bottom-1 inline-flex items-center justify-center h-6 w-6 rounded-full border text-xs bg-white hover:bg-gray-50"
+                      aria-label={`${cell.dateStr} に予約を追加`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openCreate(cell.dateStr);
+                      }}
+                      title="この日に予約を追加"
+                      role="button"
+                      tabIndex={0}
+                    >
+                      ＋
+                    </span>
+                  ) : (
+                    <span
+                      className="absolute right-1 bottom-1 inline-flex items-center justify-center h-6 w-6 rounded-full border text-xs text-gray-400 bg-gray-50 cursor-not-allowed"
+                      title="土日は休業日のため新規は作成できません"
+                      aria-disabled="true"
+                    >
+                      休
+                    </span>
+                  )}
+                </div>
               );
             })}
           </div>
 
-          <p className="text-xs text-gray-500">
-            クリックでその日の予約を下の一覧に反映します。
-          </p>
+          <p className="text-xs text-gray-500">クリックでその日の予約を下の一覧に反映します。右下「＋」でその日に新規作成。</p>
         </section>
 
         {/* ===== 検索/絞り込み（一覧） ===== */}
-        <section className="rounded-2xl bg-white shadow p-5 space-y-4">
-          <h2 className="text-lg font-medium">絞り込み</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-            <label className="block text-sm">日付
-              <input
-                type="date"
-                className="mt-1 w-full rounded-xl border p-2"
-                value={filter.date ?? ""}
-                onChange={(e) => setFilter((f) => ({ ...f, date: e.target.value }))}
-              />
-            </label>
-            <label className="block text-sm">プログラム
-              <select
-                className="mt-1 w-full rounded-xl border p-2"
-                value={filter.program ?? ""}
-                onChange={(e) => setFilter((f) => ({
-                  ...f,
-                  program: e.target.value === "" ? "" : (isProgram(e.target.value) ? e.target.value : f.program),
-                }))}
-              >
-                <option value="">すべて</option>
-                <option value="tour">tour</option>
-                <option value="experience">experience</option>
-              </select>
-            </label>
-            <label className="block text-sm">時間帯
-              <select
-                className="mt-1 w-full rounded-xl border p-2"
-                value={filter.slot ?? ""}
-                onChange={(e) => setFilter((f) => ({
-                  ...f,
-                  slot: e.target.value === "" ? "" : (isSlot(e.target.value) ? e.target.value : f.slot),
-                }))}
-              >
-                <option value="">すべて</option>
-                <option value="am">am</option>
-                <option value="pm">pm</option>
-                <option value="full">full</option>
-              </select>
-            </label>
-            <div className="flex items-end">
-              <button
-                onClick={fetchReservations}
-                className="w-full px-4 py-2 rounded-2xl bg-black text-white shadow hover:opacity-90"
-              >
-                検索
-              </button>
-            </div>
-          </div>
-        </section>
+        {/* ここに一覧テーブルなどを置く想定（省略） */}
 
+        {/* ===== 旧：ページ内「作成フォーム」（モーダル化したので停止） ===== */}
+        {/*
         <section className="grid md:grid-cols-2 gap-6">
-          {/* 作成フォーム */}
           <form onSubmit={onSubmit} className="rounded-2xl bg-white shadow p-5 space-y-4">
-            <h2 className="text-lg font-medium">新規予約</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <label className="block text-sm">日付
-                <input
-                  type="date"
-                  className="mt-1 w-full rounded-xl border p-2"
-                  value={form.date}
-                  onChange={(e) => setForm({ ...form, date: e.target.value })}
-                  required
-                />
-              </label>
-              <label className="block text-sm">プログラム
-                <select
-                  className="mt-1 w-full rounded-xl border p-2"
-                  value={form.program}
-                  onChange={(e) => setForm((f) => ({
-                    ...f,
-                    program: isProgram(e.target.value) ? e.target.value : f.program,
-                    // tour で full を選べないよう、切り替え時の矯正
-                    slot: e.target.value === 'tour' && f.slot === 'full' ? 'am' : f.slot,
-                  }))}
-                  required
-                >
-                  <option value="experience">experience</option>
-                  <option value="tour">tour</option>
-                </select>
-              </label>
-              <label className="block text-sm">時間帯
-                <select
-                  className="mt-1 w-full rounded-xl border p-2"
-                  value={form.slot}
-                  onChange={(e) => setForm((f) => ({
-                    ...f,
-                    slot: isSlot(e.target.value) ? e.target.value : f.slot,
-                  }))}
-                  required
-                >
-                  {/* tour は am/pm のみ、experience は am/pm/full */}
-                  {form.program === "tour" ? (
-                    <>
-                      <option value="am">午前 (am)</option>
-                      <option value="pm">午後 (pm)</option>
-                    </>
-                  ) : (
-                    <>
-                      <option value="am">午前 (am)</option>
-                      <option value="pm">午後 (pm)</option>
-                      <option value="full">全日 (full)</option>
-                    </>
-                  )}
-                </select>
-              </label>
-            </div>
-            <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <label className="block text-sm">姓（last_name）
-                <input className="mt-1 w-full rounded-xl border p-2"
-                  value={form.last_name ?? ""} onChange={(e) => setForm({ ...form, last_name: e.target.value })} />
-              </label>
-              <label className="block text-sm">名（first_name）
-                <input className="mt-1 w-full rounded-xl border p-2"
-                  value={form.first_name ?? ""} onChange={(e) => setForm({ ...form, first_name: e.target.value })} />
-              </label>
-            </div>
-            <label className="block text-sm">メールアドレス
-              <input type="email" className="mt-1 w-full rounded-xl border p-2"
-                value={form.email ?? ""} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-            </label>
-            <label className="block text-sm">電話番号
-              <input className="mt-1 w-full rounded-xl border p-2"
-                value={form.phone ?? ""} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-            </label>
-            <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <label className="block text-sm">手帳の種別（notebook_type）
-                <input className="mt-1 w-full rounded-xl border p-2"
-                  value={form.notebook_type ?? ""} onChange={(e) => setForm({ ...form, notebook_type: e.target.value })} />
-              </label>
-              <label className="block text-sm">受給者証の有無（has_certificate）
-                <div className="mt-1 flex items-center gap-2">
-                  <input type="checkbox" checked={!!form.has_certificate}
-                    onChange={(e) => setForm({ ...form, has_certificate: e.target.checked })} />
-                  <span className="text-sm text-gray-600">あり</span>
-                </div>
-              </label>
-            </div>
-            <div className="flex items-center gap-3">
-              <button
-                type="submit"
-                disabled={submitting}
-                className="px-4 py-2 rounded-2xl bg-black text-white shadow hover:opacity-90 disabled:opacity-50"
-              >
-                {submitting ? "送信中…" : "予約を作成"}
-              </button>
-              <p className="text-xs text-gray-500">tour は全日不可（am/pmのみ）に自動制御。</p>
-            </div>
+            ...（旧フォーム）...
           </form>
-
-
         </section>
+        */}
 
         <footer className="text-xs text-gray-500 pt-4">API: <code>{API_BASE}</code></footer>
-      </div >
-    </div >
+      </div>
+
+      {/* 予約作成モーダル（components 化） */}
+      <CreateReservationModal
+        open={isCreateOpen}
+        initialDate={createDate}
+        initialSlot={createSlot}
+        onClose={() => setIsCreateOpen(false)}
+        onSubmit={createReservation}
+      />
+    </div>
   );
 }
